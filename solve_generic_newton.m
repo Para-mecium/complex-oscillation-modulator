@@ -120,11 +120,17 @@ function attempt = attempt_direct_step(problem, baseSnapshot, J, r, meta, opts, 
         return
     end
 
-    [accepted, candidate, candidateMessage] = apply_candidate(problem, baseSnapshot, meta, delta);
+    [accepted, candidate, candidateMessage, candidateStatus, acceptedScale, backtracks, scaledStepNorm] = ...
+        apply_candidate(problem, baseSnapshot, meta, delta, attempt.stepNorm, opts);
     if accepted
-        attempt = accept_candidate(attempt, candidate, opts.initialLambda, opts);
+        attempt = accept_candidate( ...
+            attempt, candidate, opts.initialLambda, opts, acceptedScale, backtracks, scaledStepNorm);
     else
+        attempt.status = candidateStatus;
         attempt.message = candidateMessage;
+        attempt.acceptedScale = acceptedScale;
+        attempt.backtracks = backtracks;
+        attempt.stepNorm = scaledStepNorm;
     end
 end
 
@@ -153,49 +159,90 @@ function attempt = attempt_lm_step(problem, baseSnapshot, J, r, meta, lambdaSeed
         return
     end
 
-    [accepted, candidate, candidateMessage] = apply_candidate(problem, baseSnapshot, meta, delta);
+    [accepted, candidate, candidateMessage, candidateStatus, acceptedScale, backtracks, scaledStepNorm] = ...
+        apply_candidate(problem, baseSnapshot, meta, delta, attempt.stepNorm, opts);
     if accepted
-        attempt = accept_candidate(attempt, candidate, max(opts.lambdaMin, solveResult.lambda * opts.lambdaShrink), opts);
+        attempt = accept_candidate( ...
+            attempt, candidate, max(opts.lambdaMin, solveResult.lambda * opts.lambdaShrink), ...
+            opts, acceptedScale, backtracks, scaledStepNorm);
     else
+        attempt.status = candidateStatus;
         attempt.message = candidateMessage;
+        attempt.acceptedScale = acceptedScale;
+        attempt.backtracks = backtracks;
+        attempt.stepNorm = scaledStepNorm;
     end
 end
 
-function [accepted, candidate, message] = apply_candidate(problem, baseSnapshot, meta, delta)
+function [accepted, candidate, message, status, acceptedScale, backtracks, scaledStepNorm] = ...
+        apply_candidate(problem, baseSnapshot, meta, delta, stepNorm, opts)
     accepted = false;
     candidate = struct();
     message = '';
+    status = 'failed';
+    acceptedScale = 0;
+    backtracks = 0;
+    scaledStepNorm = stepNorm;
 
-    problem.restore(baseSnapshot);
-    try
-        problem.applyIncrement(meta, delta, 1);
-        [JCandidate, rCandidate, metaCandidate] = problem.linearize();
-        rCandidate = rCandidate(:);
-        measurementCandidate = normalize_measurement(problem.measure());
-        [objectiveCandidate, residualNormCandidate] = residual_objective(rCandidate);
-    catch ME
+    hasValidator = isfield(problem, 'validateCandidate') && ~isempty(problem.validateCandidate);
+    scale = 1;
+    while true
+        scaledStepNorm = scale * stepNorm;
+        if scaledStepNorm <= opts.incrementTolerance
+            problem.restore(baseSnapshot);
+            message = 'increment tolerance satisfied';
+            status = 'step_too_small';
+            return
+        end
+
         problem.restore(baseSnapshot);
-        message = format_exception_message(ME);
+        try
+            problem.applyIncrement(meta, delta, scale);
+            if hasValidator
+                validation = normalize_candidate_validation(problem.validateCandidate(meta, delta, scale));
+                if ~validation.isValid
+                    problem.restore(baseSnapshot);
+                    message = compose_candidate_validation_message(validation.message);
+                    if backtracks >= opts.candidateBacktrackingMaxBacktracks
+                        return
+                    end
+                    backtracks = backtracks + 1;
+                    scale = scale * opts.candidateBacktrackingFactor;
+                    continue
+                end
+            end
+
+            [JCandidate, rCandidate, metaCandidate] = problem.linearize();
+            rCandidate = rCandidate(:);
+            measurementCandidate = normalize_measurement(problem.measure());
+            [objectiveCandidate, residualNormCandidate] = residual_objective(rCandidate);
+        catch ME
+            problem.restore(baseSnapshot);
+            message = format_exception_message(ME);
+            return
+        end
+
+        if ~all(isfinite(rCandidate)) || ~all(isfinite(measurementCandidate.errorVec)) || ...
+                ~isfinite(objectiveCandidate) || ~isfinite(measurementCandidate.scalarError)
+            problem.restore(baseSnapshot);
+            message = 'trial iterate produced non-finite residuals or errors';
+            return
+        end
+
+        accepted = true;
+        status = 'accepted';
+        acceptedScale = scale;
+        candidate.J = JCandidate;
+        candidate.r = rCandidate;
+        candidate.meta = metaCandidate;
+        candidate.measurement = measurementCandidate;
+        candidate.objective = objectiveCandidate;
+        candidate.residualNorm = residualNormCandidate;
         return
     end
-
-    if ~all(isfinite(rCandidate)) || ~all(isfinite(measurementCandidate.errorVec)) || ...
-            ~isfinite(objectiveCandidate) || ~isfinite(measurementCandidate.scalarError)
-        problem.restore(baseSnapshot);
-        message = 'trial iterate produced non-finite residuals or errors';
-        return
-    end
-
-    accepted = true;
-    candidate.J = JCandidate;
-    candidate.r = rCandidate;
-    candidate.meta = metaCandidate;
-    candidate.measurement = measurementCandidate;
-    candidate.objective = objectiveCandidate;
-    candidate.residualNorm = residualNormCandidate;
 end
 
-function attempt = accept_candidate(attempt, candidate, nextLambda, opts)
+function attempt = accept_candidate(attempt, candidate, nextLambda, opts, acceptedScale, backtracks, scaledStepNorm)
     attempt.status = 'accepted';
     attempt.message = 'accepted';
     attempt.J = candidate.J;
@@ -204,7 +251,9 @@ function attempt = accept_candidate(attempt, candidate, nextLambda, opts)
     attempt.measurement = candidate.measurement;
     attempt.objective = candidate.objective;
     attempt.residualNorm = candidate.residualNorm;
-    attempt.acceptedScale = 1;
+    attempt.acceptedScale = acceptedScale;
+    attempt.backtracks = backtracks;
+    attempt.stepNorm = scaledStepNorm;
     attempt.nextLambda = clamp_lambda(nextLambda, opts);
 end
 
@@ -310,11 +359,41 @@ function message = format_exception_message(ME)
     end
 end
 
+function validation = normalize_candidate_validation(validation)
+    if ~isstruct(validation) || ~isfield(validation, 'isValid')
+        error('solve_generic_newton:InvalidCandidateValidation', ...
+            ['problem.validateCandidate() must return a struct with field ' ...
+            '''isValid''.'])
+    end
+
+    validation.isValid = logical(validation.isValid);
+    if ~isfield(validation, 'message') || isempty(validation.message)
+        validation.message = '';
+    elseif isstring(validation.message) && isscalar(validation.message)
+        validation.message = char(validation.message);
+    end
+end
+
+function message = compose_candidate_validation_message(message)
+    if isempty(message)
+        message = 'candidate validation failed';
+        return
+    end
+
+    message = sprintf('candidate validation failed: %s', message);
+end
+
 function validate_problem(problem)
     requiredFields = {'linearize', 'snapshot', 'restore', 'applyIncrement', 'measure'};
     if ~isstruct(problem) || ~all(isfield(problem, requiredFields))
         error('solve_generic_newton:InvalidProblem', ...
             'problem must be a struct with fields linearize, snapshot, restore, applyIncrement, and measure.')
+    end
+
+    if isfield(problem, 'validateCandidate') && ~isempty(problem.validateCandidate) && ...
+            ~isa(problem.validateCandidate, 'function_handle')
+        error('solve_generic_newton:InvalidProblem', ...
+            'problem.validateCandidate must be a function handle when provided.')
     end
 end
 
@@ -351,6 +430,11 @@ function opts = normalize_options(opts)
         'solve_generic_newton', 'directConditionThreshold');
     validateattributes(opts.lmConditionThreshold, {'numeric'}, {'scalar', 'positive'}, ...
         'solve_generic_newton', 'lmConditionThreshold');
+    validateattributes(opts.candidateBacktrackingFactor, {'numeric'}, ...
+        {'scalar', 'positive', '<', 1}, 'solve_generic_newton', 'candidateBacktrackingFactor');
+    validateattributes(opts.candidateBacktrackingMaxBacktracks, {'numeric'}, ...
+        {'scalar', 'integer', 'nonnegative'}, ...
+        'solve_generic_newton', 'candidateBacktrackingMaxBacktracks');
 end
 
 function opts = default_options()
@@ -364,4 +448,6 @@ function opts = default_options()
     opts.lambdaShrink = 0.3;
     opts.directConditionThreshold = 1e-10;
     opts.lmConditionThreshold = 1e-12;
+    opts.candidateBacktrackingFactor = 0.5;
+    opts.candidateBacktrackingMaxBacktracks = 6;
 end

@@ -505,6 +505,7 @@ classdef FMAM_ODE < handle
             problem.restore = @(snapshot) obj.restoreSolverView(snapshot);
             problem.applyIncrement = @(meta,increments,scale) obj.applyUnknownIncrement(meta,increments,scale);
             problem.measure = @() obj.measureNewtonState();
+            problem.validateCandidate = @(meta,delta,scale) obj.validateNewtonCandidate(meta,delta,scale);
             options = obj.effectiveNewtonOptions(overrideOptions);
         end
 
@@ -532,6 +533,17 @@ classdef FMAM_ODE < handle
             measurement.scalarError = max(err);
         end
 
+        function validation = validateNewtonCandidate(obj,~,~,~)
+            validation = struct('isValid', true, 'message', '');
+            if ~obj.checkPsiNonnegative
+                return
+            end
+
+            issue = fmam_state_ops.positivePsiIssue(obj.currentPsiValues());
+            validation.isValid = issue.isValid;
+            validation.message = issue.message;
+        end
+
         function opts = defaultNewtonOptions(~)
             opts = struct();
             opts.maxIterations = 50;
@@ -543,6 +555,8 @@ classdef FMAM_ODE < handle
             opts.lambdaShrink = 0.3;
             opts.directConditionThreshold = 1e-10;
             opts.lmConditionThreshold = 1e-12;
+            opts.candidateBacktrackingFactor = 0.5;
+            opts.candidateBacktrackingMaxBacktracks = 6;
         end
 
         function opts = effectiveNewtonOptions(obj,overrideOptions)
@@ -599,7 +613,6 @@ classdef FMAM_ODE < handle
             end
             view = obj.solverView;
             obj.solverView = FMAM_ODE.applyIncrementToSolverView(view,meta,increments,scale);
-            obj.assertCurrentTimeMapInvariant();
         end
 
         function value = currentUnknownInfNorm(obj,unknowns)
