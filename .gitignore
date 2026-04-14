@@ -1,0 +1,25 @@
+.DS_Store
+matlab.mat
+*.asv
+*.autosave
+slprj/
+*.aux
+*.log
+*.mat
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.fig
+*.mexmaca64
+*.mexw64
+
+Circadian/cache/
+Circadian/output/
+flexible_modulators/output/
+network_modulatability/temp_fig/
+network_modulatability/Ergodic data/
+network_modulatability/tmp_ergodic_smoke/
+RLT_circuit/**/circuit_data/
+MatCont7p6/Help/
+MatCont7p6/Systems/**/diagram/

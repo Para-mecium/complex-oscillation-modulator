@@ -1,0 +1,6 @@
+p=4;S=1;k1=0.05;kdx=0.05;ksy=1;kdy=0.05;Kd=1;k2=1;ET=1;I1=1;U=2;g=2;
+
+fg=g*I1^2/(1+I1^2);                         
+fU=U*fg^2/(1+fg^2);                                             
+X'=k1*S*Kd^p/(Kd^p+Y^p)*fU-kdx*X;           
+Y'=ksy*X-kdy*Y-k2*ET*Y/(0.1*Kd+Y+2/Kd*Y^2);
