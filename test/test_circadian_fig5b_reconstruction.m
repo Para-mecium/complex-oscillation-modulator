@@ -4,6 +4,14 @@ function tests = test_circadian_fig5b_reconstruction
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+testDir = fileparts(mfilename('fullpath'));
+rootDir = fileparts(testDir);
+addpath(rootDir, '-begin');
+addpath(fullfile(rootDir, 'Circadian'), '-begin');
+testCase.TestData.rootDir = rootDir;
+end
+
 function setup(testCase)
 global RUN_MODULATION_TASK_LOG
 RUN_MODULATION_TASK_LOG = {};

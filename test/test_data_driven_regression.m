@@ -4,6 +4,15 @@ function tests = test_data_driven_regression
     tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+    testDir = fileparts(mfilename('fullpath'));
+    rootDir = fileparts(testDir);
+    addpath(rootDir, '-begin');
+    addpath(fullfile(rootDir, 'RLT_circuit'), '-begin');
+    addpath(fullfile(rootDir, 'RLT_circuit', 'parameter_inference'), '-begin');
+    testCase.TestData.rootDir = rootDir;
+end
+
 function testInitialDataDrivenFitIsNotBlockedByIntermediatePsiChecks(testCase)
     [task, initialSolverView] = make_data_driven_task();
 
@@ -56,14 +65,15 @@ function [task, initialSolverView] = make_data_driven_task()
     testDir = fileparts(mfilename('fullpath'));
     rootDir = fileparts(testDir);
     circuitDir = fullfile(rootDir, 'RLT_circuit');
+    parameterInferenceDir = fullfile(circuitDir, 'parameter_inference');
     startDir = pwd;
     cleanupObj = onCleanup(@() cd(startDir)); %#ok<NASGU>
 
-    cd(circuitDir);
-    load("initData_circuit.mat");
+    cd(parameterInferenceDir);
+    load(fullfile(parameterInferenceDir, "initData_circuit.mat"));
     System;
     obs = [];
-    load("initData_ODE.mat");
+    load(fullfile(parameterInferenceDir, "initData_ODE.mat"));
 
     params = Parameters;
     t = TS{1};

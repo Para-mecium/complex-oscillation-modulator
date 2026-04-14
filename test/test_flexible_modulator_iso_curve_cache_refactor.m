@@ -4,6 +4,14 @@ function tests = test_flexible_modulator_iso_curve_cache_refactor
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+testDir = fileparts(mfilename('fullpath'));
+rootDir = fileparts(testDir);
+addpath(rootDir, '-begin');
+addpath(fullfile(rootDir, 'flexible_modulators'), '-begin');
+testCase.TestData.rootDir = rootDir;
+end
+
 function setup(testCase)
 global RUN_MODULATION_TASK_LOG FLEX_FIND_ORBIT_LOG
 RUN_MODULATION_TASK_LOG = {};

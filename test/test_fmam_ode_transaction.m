@@ -4,6 +4,13 @@ function tests = test_fmam_ode_transaction
     tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+    testDir = fileparts(mfilename('fullpath'));
+    rootDir = fileparts(testDir);
+    addpath(rootDir);
+    testCase.TestData.rootDir = rootDir;
+end
+
 function testConstructorRequiresExternalDerivatives(testCase)
     sys = make_harmonic_system();
     obs = {};
