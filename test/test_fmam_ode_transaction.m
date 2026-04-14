@@ -31,6 +31,26 @@ function testFitReturnsStructuredResult(testCase)
     verifyGreaterThanOrEqual(testCase, result.iterations, 0);
 end
 
+function testFitResultContractRemainsStable(testCase)
+    task = make_period_target_task(1e-3, 1e-6, 5);
+
+    result = task.fit();
+    expectedFields = {'converged', 'iterations', 'finalError', 'message', 'history', ...
+        'linearResidualNorm', 'linearResidual', 'stepAccepted', 'scalarError', 'objective'};
+
+    verifyEqual(testCase, sort(fieldnames(result)), sort(expectedFields(:)));
+    verifyClass(testCase, result.converged, 'logical');
+    verifyTrue(testCase, isscalar(result.iterations) && isnumeric(result.iterations));
+    verifyTrue(testCase, isrow(result.finalError));
+    verifyEqual(testCase, numel(result.finalError), numel(task.res()));
+    verifyTrue(testCase, ischar(result.message) || (isstring(result.message) && isscalar(result.message)));
+    verifyTrue(testCase, isscalar(result.linearResidualNorm) && isnumeric(result.linearResidualNorm));
+    verifyTrue(testCase, iscolumn(result.linearResidual) && isnumeric(result.linearResidual));
+    verifyTrue(testCase, isscalar(result.stepAccepted) && islogical(result.stepAccepted));
+    verifyTrue(testCase, isscalar(result.scalarError) && isnumeric(result.scalarError));
+    verifyTrue(testCase, isscalar(result.objective) && isnumeric(result.objective));
+end
+
 function testFitAndOneIterExposeGenericSolverDiagnostics(testCase)
     task = make_period_target_task(1e-3, 1e-6, 5);
 
