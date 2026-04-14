@@ -261,8 +261,8 @@ function [solverView, derived] = make_guardrail_views(obs, params)
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, 3, PV);
-    discretization = state.defaultDiscretization();
-    extremaSearch = state.defaultExtremaSearch();
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, 3, PV, ...
         discretization, extremaSearch);
@@ -279,8 +279,8 @@ function task = make_observable_pv_guardrail_task()
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, 3, PV);
-    discretization = state.defaultDiscretization();
-    extremaSearch = state.defaultExtremaSearch();
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, 3, PV, ...
         discretization, extremaSearch);

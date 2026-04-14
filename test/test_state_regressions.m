@@ -44,11 +44,12 @@ function testNonMonotoneTimeMapEmitsNamedWarning(testCase)
     snapshot = make_solver_snapshot(stat);
     snapshot.p_Psi = zeros(size(snapshot.p_Psi));
     snapshot.q_Psi = zeros(size(snapshot.q_Psi));
-    stat = state.fromSolverSnapshot(stat.obs, snapshot);
+    stat = state.fromSolverSnapshot(stat.obs, snapshot, stat.discretization, stat.extremaSearch);
 
     verifyWarning(testCase, @() stat.assertTimeMapInvariant(), 'state:NonMonotoneTimeMap');
 
-    statForTimeGrid = state.fromSolverSnapshot(stat.obs, snapshot);
+    statForTimeGrid = state.fromSolverSnapshot( ...
+        stat.obs, snapshot, stat.discretization, stat.extremaSearch);
     verifyWarning(testCase, @() statForTimeGrid.t, 'state:NonMonotoneTimeMap');
 end
 
@@ -57,7 +58,7 @@ function testNonMonotoneTimeMapCheckCanBeDisabled(testCase)
     snapshot = make_solver_snapshot(stat);
     snapshot.p_Psi = zeros(size(snapshot.p_Psi));
     snapshot.q_Psi = zeros(size(snapshot.q_Psi));
-    stat = state.fromSolverSnapshot(stat.obs, snapshot);
+    stat = state.fromSolverSnapshot(stat.obs, snapshot, stat.discretization, stat.extremaSearch);
     stat.checkPsiNonnegative = false;
 
     verifyWarningFree(testCase, @() stat.assertTimeMapInvariant());
@@ -66,12 +67,49 @@ end
 
 function testTimeGridUsesExactIntervalIntegrals(testCase)
     stat = make_reference_state();
-    dt = fmam_state_ops.timeIncrementsFromCoefficients(stat.p_Psi, stat.q_Psi, stat.LphiConst);
+    phaseSampleCount = stat.discretization.reconstruction.phaseSampleCount;
+    dt = fmam_state_ops.timeIncrementsFromCoefficients(stat.p_Psi, stat.q_Psi, phaseSampleCount);
     tGrid = stat.t;
     tClosed = [tGrid; stat.period];
 
     verifyGreaterThan(testCase, min(dt), 0);
     verifyEqual(testCase, diff(tClosed), dt, 'AbsTol', 1e-10);
+end
+
+function testDiscretizationSetterMergesPartialAndWholeStructUpdates(testCase)
+    stat = make_reference_state();
+    original = stat.discretization;
+
+    stat.discretization = struct('reconstruction', struct('phaseSampleCount', 64));
+    verifyEqual(testCase, stat.discretization.reconstruction.phaseSampleCount, 64);
+    verifyEqual(testCase, stat.discretization.reconstruction.timeResampleCount, ...
+        original.reconstruction.timeResampleCount);
+    verifyEqual(testCase, numel(stat.phi), 64);
+    verifyEqual(testCase, size(stat.TS_var, 1), 64);
+
+    stat.discretization = struct( ...
+        'assemblySampleCount', 256, ...
+        'reconstruction', struct('timeResampleCount', 4096, 'phaseSampleCount', 96));
+    verifyEqual(testCase, stat.discretization.assemblySampleCount, 256);
+    verifyEqual(testCase, stat.discretization.reconstruction.timeResampleCount, 4096);
+    verifyEqual(testCase, stat.discretization.reconstruction.phaseSampleCount, 96);
+    verifyEqual(testCase, numel(stat.phi), 96);
+end
+
+function testExtremaSearchSetterMergesPartialAndWholeStructUpdates(testCase)
+    stat = make_reference_state();
+    original = stat.extremaSearch;
+
+    stat.extremaSearch.maxRefinementRounds = 7;
+    verifyEqual(testCase, stat.extremaSearch.maxRefinementRounds, 7);
+    verifyEqual(testCase, stat.extremaSearch.extremaResidualTolerance, ...
+        original.extremaResidualTolerance);
+
+    stat.extremaSearch = struct( ...
+        'maxRefinementRounds', 4, ...
+        'extremaResidualTolerance', 1e-5);
+    verifyEqual(testCase, stat.extremaSearch.maxRefinementRounds, 4);
+    verifyEqual(testCase, stat.extremaSearch.extremaResidualTolerance, 1e-5);
 end
 
 function testValidateTrajectoryInputsRejectsNonMonotoneTimeGrid(testCase)

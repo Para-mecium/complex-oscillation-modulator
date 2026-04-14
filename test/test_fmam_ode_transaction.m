@@ -81,7 +81,8 @@ function testOneIterBacktracksWhenPsiValidatorRejectsFullStep(testCase)
 
     result = task.oneIter();
     finalView = task.exportSolverView();
-    phi = (0:state.LphiConst-1)' * 2 * pi / state.LphiConst;
+    phaseSampleCount = fmam_state_defaults.defaultDiscretization().reconstruction.phaseSampleCount;
+    phi = (0:phaseSampleCount-1)' * 2 * pi / phaseSampleCount;
     psiMin = min(fmam_state_ops.evaluateTrigSeries(phi, finalView.p_Psi, finalView.q_Psi));
 
     verifyEqual(testCase, result.iterations, 1);
@@ -369,8 +370,8 @@ end
 function solverView = make_reference_solver_view(obs, params, M, PV)
     [t, x] = reference_trajectory();
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, M, PV);
-    discretization = state.defaultDiscretization();
-    extremaSearch = state.defaultExtremaSearch();
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, M, PV, ...
         discretization, extremaSearch);

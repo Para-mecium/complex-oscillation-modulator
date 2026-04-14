@@ -74,8 +74,8 @@ function [task, initialSolverView] = make_data_driven_task()
     derivatives = build_symbolic_derivatives(sys, obs, numel(params));
     PV = struct('name', 'var', 'idx', 1);
     [obs, params, t, TS_var] = canonicalize_trajectory_fixture(obs, params, t, TS_var, M, PV);
-    discretization = state.defaultDiscretization();
-    extremaSearch = state.defaultExtremaSearch();
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     initialSolverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, TS_var, M, PV, ...
         discretization, extremaSearch);

@@ -281,8 +281,8 @@ function [solverView, derived] = make_reference_views(obs, omega, M, PV)
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
     [obs, omega, t, x] = canonicalize_trajectory_fixture(obs, omega, t, x, M, PV);
-    discretization = state.defaultDiscretization();
-    extremaSearch = state.defaultExtremaSearch();
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, omega, t, x, M, PV, ...
         discretization, extremaSearch);

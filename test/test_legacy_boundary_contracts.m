@@ -7,25 +7,28 @@ source = fileread(fullfile(repo_root(), 'fmam_state_ops.m'));
 verifyFalse(testCase, contains(source, 'utils.state_ops'));
 end
 
-function testUtilsStateOpsIsShimToFmamStateOps(testCase)
-source = fileread(fullfile(repo_root(), '+utils', 'state_ops.m'));
-verifyTrue(testCase, contains(source, 'fmam_state_ops.'));
+function testUtilsStateOpsShimIsRemoved(testCase)
+verifyFalse(testCase, isfile(fullfile(repo_root(), '+utils', 'state_ops.m')));
 end
 
-function testProductionCodeAvoidsStateDefaultConstantsOutsideCompat(testCase)
+function testProductionCodeAvoidsLegacyStateCompatibilityEntrypoints(testCase)
 files = { ...
     fullfile(repo_root(), 'FMAM_ODE.m'), ...
     fullfile(repo_root(), 'assemble_newton_linear_system.m'), ...
     fullfile(repo_root(), 'fmam_state_ops.m'), ...
+    fullfile(repo_root(), 'state.m'), ...
     fullfile(repo_root(), 'Circadian', '+circadian', 'run_fmam_task.m'), ...
     fullfile(repo_root(), 'flexible_modulators', '+flexmod', 'run_fmam_task.m')};
 
-patterns = {'state.Lconst', 'state.LphiConst'};
+patterns = {'state.Lconst', 'state.LphiConst', ...
+    'state.defaultDiscretization(', 'state.defaultExtremaSearch(', ...
+    'state.FindExtreme(', 'state.normalizeDiscretization(', ...
+    'state.normalizeExtremaSearch('};
 for i = 1:numel(files)
     source = fileread(files{i});
     for j = 1:numel(patterns)
         verifyFalse(testCase, contains(source, patterns{j}), ...
-            sprintf('Unexpected legacy default constant reference in %s: %s', files{i}, patterns{j}));
+            sprintf('Unexpected legacy state compatibility reference in %s: %s', files{i}, patterns{j}));
     end
 end
 end
@@ -57,16 +60,11 @@ end
 end
 
 function testDefaultConfigsRemainSeparated(testCase)
-cfg = state.defaultDiscretization();
 extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
-verifyEqual(testCase, state.Lconst, cfg.reconstruction.timeResampleCount);
-verifyEqual(testCase, state.LphiConst, cfg.reconstruction.phaseSampleCount);
 
 defaultCfg = fmam_state_defaults.defaultDiscretization();
 verifyEqual(testCase, fmam_state_defaults.timeResampleCount, defaultCfg.reconstruction.timeResampleCount);
 verifyEqual(testCase, fmam_state_defaults.phaseSampleCount, defaultCfg.reconstruction.phaseSampleCount);
-verifyFalse(testCase, isfield(defaultCfg, 'countMax'));
-verifyFalse(testCase, isfield(defaultCfg, 'errMax'));
 verifyEqual(testCase, extremaSearch.maxRefinementRounds, fmam_state_ops.maxRefinementRounds);
 verifyEqual(testCase, extremaSearch.extremaResidualTolerance, fmam_state_ops.extremaResidualTolerance);
 end

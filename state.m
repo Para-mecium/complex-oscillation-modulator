@@ -1,9 +1,4 @@
 classdef state < handle
-    properties (Constant)
-        Lconst = 20000
-        LphiConst = 500
-    end
-
     properties
         PV
         checkPsiNonnegative = true
@@ -62,8 +57,8 @@ classdef state < handle
     end
     methods
         function obj = state(obs,Params,t,TS_var,M,PV)
-            obj.discretizationConfig = state.defaultDiscretization();
-            obj.extremaSearchConfig = state.defaultExtremaSearch();
+            obj.discretizationConfig = fmam_state_defaults.defaultDiscretization();
+            obj.extremaSearchConfig = fmam_state_ops.defaultExtremaSearchSettings();
             if nargin == 0
                 return
             end
@@ -120,16 +115,38 @@ classdef state < handle
 
         function prop = get.discretization(obj)
             if isempty(obj.discretizationConfig)
-                obj.discretizationConfig = state.defaultDiscretization();
+                obj.discretizationConfig = fmam_state_defaults.defaultDiscretization();
             end
             prop = obj.discretizationConfig;
         end
 
+        function set.discretization(obj,discretization)
+            current = obj.discretization;
+            merged = state.mergeDiscretizationConfig(current,discretization);
+            updated = fmam_state_defaults.normalizeDiscretization(merged);
+            if isequal(updated,current)
+                return
+            end
+            obj.discretizationConfig = updated;
+            obj.refreshStateConfigurationCaches();
+        end
+
         function prop = get.extremaSearch(obj)
             if isempty(obj.extremaSearchConfig)
-                obj.extremaSearchConfig = state.defaultExtremaSearch();
+                obj.extremaSearchConfig = fmam_state_ops.defaultExtremaSearchSettings();
             end
             prop = obj.extremaSearchConfig;
+        end
+
+        function set.extremaSearch(obj,extremaSearch)
+            current = obj.extremaSearch;
+            merged = state.mergeExtremaSearchConfig(current,extremaSearch);
+            updated = fmam_state_ops.normalizeExtremaSearchSettings(merged);
+            if isequal(updated,current)
+                return
+            end
+            obj.extremaSearchConfig = updated;
+            obj.refreshStateConfigurationCaches();
         end
 
         function prop = get.TS_var(obj)
@@ -381,20 +398,18 @@ classdef state < handle
                 'PV', obj.PV);
         end
 
+        function refreshStateConfigurationCaches(obj)
+            if state.hasLoadedSolverState(obj)
+                obj.refreshDerivedState();
+            end
+        end
+
     end
 
     
     methods(Static)
         function TS_obs = getObs(obs,TS_var)
             TS_obs = fmam_state_ops.getObs(obs,TS_var);
-        end
-        function [phi_max,phi_min,amplitude,var_max,var_min] = FindExtreme(p,q,L)
-            extremaSearch = state.defaultExtremaSearch();
-            [phi_max,phi_min,amplitude,var_max,var_min] = ...
-                fmam_state_ops.FindExtreme( ...
-                    p,q,L, ...
-                    extremaSearch.maxRefinementRounds, ...
-                    extremaSearch.extremaResidualTolerance);
         end
 
         function output = Trintegration(p,q,phi_L,phi_U)
@@ -403,7 +418,7 @@ classdef state < handle
 
         function [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
             fourierCoeffs(M,t,TS_variable,TS_observable,PV)
-            discretization = state.defaultDiscretization();
+            discretization = fmam_state_defaults.defaultDiscretization();
             [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
                 fmam_state_ops.reconstructSolverCoefficients( ...
                     TS_variable,TS_observable,t(:)-t(1),M,PV,discretization);
@@ -471,25 +486,9 @@ classdef state < handle
 
         function dt = timeIncrementsFromCoefficients(p,q,numIntervals)
             if nargin < 3 || isempty(numIntervals)
-                numIntervals = state.defaultDiscretization().reconstruction.phaseSampleCount;
+                numIntervals = fmam_state_defaults.defaultDiscretization().reconstruction.phaseSampleCount;
             end
             dt = fmam_state_ops.timeIncrementsFromCoefficients(p,q,numIntervals);
-        end
-
-        function discretization = defaultDiscretization()
-            discretization = fmam_state_defaults.defaultDiscretization();
-        end
-
-        function discretization = normalizeDiscretization(discretization)
-            discretization = fmam_state_defaults.normalizeDiscretization(discretization);
-        end
-
-        function extremaSearch = defaultExtremaSearch()
-            extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
-        end
-
-        function extremaSearch = normalizeExtremaSearch(extremaSearch)
-            extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(extremaSearch);
         end
 
         function issue = positiveTimeIncrementIssue(p,q,numIntervals)
@@ -523,23 +522,23 @@ classdef state < handle
             obj = state();
             obj.obs = obs;
             if nargin < 3 || isempty(discretization)
-                discretization = state.defaultDiscretization();
+                discretization = fmam_state_defaults.defaultDiscretization();
             end
             if nargin < 4 || isempty(extremaSearch)
-                extremaSearch = state.defaultExtremaSearch();
+                extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
             end
-            obj.discretizationConfig = state.normalizeDiscretization(discretization);
-            obj.extremaSearchConfig = state.normalizeExtremaSearch(extremaSearch);
+            obj.discretizationConfig = fmam_state_defaults.normalizeDiscretization(discretization);
+            obj.extremaSearchConfig = fmam_state_ops.normalizeExtremaSearchSettings(extremaSearch);
             obj.loadSolverSnapshot(snapshot);
         end
 
         function obj = fromSolverView(obs,solverView,discretization,extremaSearch)
             solverView = fmam_state_ops.normalizeSolverView(solverView);
             if nargin < 3 || isempty(discretization)
-                discretization = state.defaultDiscretization();
+                discretization = fmam_state_defaults.defaultDiscretization();
             end
             if nargin < 4 || isempty(extremaSearch)
-                extremaSearch = state.defaultExtremaSearch();
+                extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
             end
             derived = fmam_state_ops.buildDerivedView( ...
                 obs,solverView,discretization);
@@ -556,16 +555,67 @@ classdef state < handle
             solverView = fmam_state_ops.normalizeSolverView(solverView);
             snapshot = fmam_state_ops.buildStateSnapshotFromViews(solverView,derived);
             if nargin < 4 || isempty(discretization)
-                discretization = state.defaultDiscretization();
+                discretization = fmam_state_defaults.defaultDiscretization();
             end
             if nargin < 5 || isempty(extremaSearch)
-                extremaSearch = state.defaultExtremaSearch();
+                extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
             end
             obj = state.fromSolverSnapshot(obs,snapshot,discretization,extremaSearch);
         end
 
         function [a,b] = primaryAmplitudeAndCenter(derived,PV)
             [a,b] = fmam_state_ops.primaryAmplitudeAndCenter(derived,PV);
+        end
+
+        function discretization = mergeDiscretizationConfig(current,update)
+            if nargin < 1 || isempty(current)
+                current = fmam_state_defaults.defaultDiscretization();
+            end
+            if nargin < 2 || isempty(update)
+                discretization = current;
+                return
+            end
+            if ~isstruct(update)
+                error('state:InvalidDiscretizationUpdate', ...
+                    'discretization updates must be provided as a struct.');
+            end
+
+            discretization = current;
+            fieldNames = fieldnames(update);
+            for i = 1:numel(fieldNames)
+                fieldName = fieldNames{i};
+                if strcmp(fieldName,'reconstruction')
+                    discretization.reconstruction = fmam_state_defaults.normalizeReconstruction( ...
+                        update.reconstruction, current.reconstruction);
+                else
+                    discretization.(fieldName) = update.(fieldName);
+                end
+            end
+        end
+
+        function extremaSearch = mergeExtremaSearchConfig(current,update)
+            if nargin < 1 || isempty(current)
+                current = fmam_state_ops.defaultExtremaSearchSettings();
+            end
+            if nargin < 2 || isempty(update)
+                extremaSearch = current;
+                return
+            end
+            if ~isstruct(update)
+                error('state:InvalidExtremaSearchUpdate', ...
+                    'extremaSearch updates must be provided as a struct.');
+            end
+
+            extremaSearch = current;
+            fieldNames = fieldnames(update);
+            for i = 1:numel(fieldNames)
+                extremaSearch.(fieldNames{i}) = update.(fieldNames{i});
+            end
+        end
+
+        function tf = hasLoadedSolverState(obj)
+            tf = ~isempty(obj.p_Psi) && ~isempty(obj.p_var) && ~isempty(obj.q_var) && ...
+                ~isempty(obj.params) && ~isempty(obj.PV);
         end
     end
 end

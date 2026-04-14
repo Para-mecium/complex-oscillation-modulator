@@ -58,7 +58,7 @@ function testStateFromViewsMatchesCompatibilityAdapter(testCase)
     view = task.exportSolverView();
     derived = task.exportDerivedView();
 
-    rebuilt = state.fromViews(task.obs, view, derived);
+    rebuilt = state.fromViews(task.obs, view, derived, task.discretization, task.extremaSearch);
     compat = task.rebuildState();
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
@@ -74,7 +74,7 @@ function testStateFromSolverViewMatchesCompatibilityAdapter(testCase)
     task = make_reference_task();
     view = task.exportSolverView();
 
-    rebuilt = state.fromSolverView(task.obs, view);
+    rebuilt = state.fromSolverView(task.obs, view, task.discretization, task.extremaSearch);
     compat = task.rebuildState();
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
@@ -89,7 +89,7 @@ function testStateFromSolverSnapshotMatchesCompatibilityAdapter(testCase)
     snapshot = fmam_state_ops.buildStateSnapshotFromViews( ...
         task.exportSolverView(), task.exportDerivedView());
 
-    rebuilt = state.fromSolverSnapshot(task.obs, snapshot);
+    rebuilt = state.fromSolverSnapshot(task.obs, snapshot, task.discretization, task.extremaSearch);
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
     verifyEqual(testCase, rebuilt.p_Psi, compat.p_Psi, 'AbsTol', 1e-12);
