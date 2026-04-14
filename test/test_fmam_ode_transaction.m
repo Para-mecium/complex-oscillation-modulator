@@ -369,10 +369,11 @@ end
 function solverView = make_reference_solver_view(obs, params, M, PV)
     [t, x] = reference_trajectory();
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, M, PV);
+    discretization = state.defaultDiscretization();
+    extremaSearch = state.defaultExtremaSearch();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, M, PV, ...
-        state.Lconst, state.LphiConst, ...
-        state.countMax, state.errMax);
+        discretization, extremaSearch);
 end
 
 function [t, x] = reference_trajectory()

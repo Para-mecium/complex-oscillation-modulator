@@ -74,10 +74,11 @@ function [task, initialSolverView] = make_data_driven_task()
     derivatives = build_symbolic_derivatives(sys, obs, numel(params));
     PV = struct('name', 'var', 'idx', 1);
     [obs, params, t, TS_var] = canonicalize_trajectory_fixture(obs, params, t, TS_var, M, PV);
+    discretization = state.defaultDiscretization();
+    extremaSearch = state.defaultExtremaSearch();
     initialSolverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, TS_var, M, PV, ...
-        state.Lconst, state.LphiConst, ...
-        state.countMax, state.errMax);
+        discretization, extremaSearch);
 
     items_per = struct;
     items_per(1).prop = 'p_Psi';

@@ -9,7 +9,7 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
     Derivative_var = ctx.derivatives.var;
     Derivative_obs = ctx.derivatives.obs;
     DDerivative_obs = ctx.derivatives.obs2;
-    L = ctx.L;
+    L = ctx.discretization.assemblySampleCount;
     N = ctx.dimVar;
     n = ctx.dimObs;
     MVar = ctx.truncationOrder;
@@ -261,6 +261,8 @@ function tf = should_insert_frozen_psi_closure_row(PV, eqIdx)
 end
 
 function targetCtx = build_target_rules_context(ctx)
+    discretization = fmam_state_defaults.normalizeDiscretization(ctx.discretization);
+    extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(ctx.extremaSearch);
     targetCtx = struct();
     targetCtx.obs = ctx.obs;
     targetCtx.dimVar = ctx.dimVar;
@@ -288,10 +290,10 @@ function targetCtx = build_target_rules_context(ctx)
         'obsPhiMin', ctx.obsPhiMin, ...
         'PV', ctx.PV, ...
         'propertySizes', targetCtx.propertySizes);
+    targetCtx.discretization = discretization;
+    targetCtx.extremaSearch = extremaSearch;
     targetCtx.derived = fmam_state_ops.buildDerivedView( ...
-        ctx.obs,targetCtx.solver, ...
-        fmam_state_defaults.LphiConst,fmam_state_defaults.Lconst, ...
-        fmam_state_defaults.countMax,fmam_state_defaults.errMax);
+        ctx.obs,targetCtx.solver,discretization);
 end
 
 function assembly = build_target_row_assembly(indexMap, parameters, p_Psi, q_Psi, ...

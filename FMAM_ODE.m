@@ -49,7 +49,6 @@ classdef FMAM_ODE < handle
 
     properties
         errBound = 1e-8;
-        Lconst = 500;
         needLog = false
         verbose = true
         checkPsiNonnegative = true
@@ -68,16 +67,24 @@ classdef FMAM_ODE < handle
         p_Psi_init = []
         q_Psi_init = []
         solverView = struct()
+        discretizationConfig = struct()
+        extremaSearchConfig = struct()
     end
 
     properties (Dependent)
         isPsiUpdated
         items_per_curr
+        assemblySampleCount
+        reconstruction
+        discretization
+        extremaSearch
     end
 
     methods
         function obj = FMAM_ODE(system,observables,initialSolverView,items_per,Coe_Controlled,maxstepsize,err,varargin)
             ctorOptions = FMAM_ODE.parseConstructorOptions(varargin{:});
+            obj.discretizationConfig = ctorOptions.discretization;
+            obj.extremaSearchConfig = ctorOptions.extremaSearch;
             if iscell(system)
                 system = reshape(system,1,[]);
             end
@@ -111,7 +118,6 @@ classdef FMAM_ODE < handle
             obj.needLog = ctorOptions.needLog;
             obj.verbose = ctorOptions.verbose;
             obj.errBound = ctorOptions.errBound;
-            obj.Lconst = ctorOptions.Lconst;
             obj.checkPsiNonnegative = ctorOptions.checkPsiNonnegative;
 
             obj.continuationOptions = obj.normalizeContinuationOptions(obj.continuationOptions);
@@ -132,6 +138,52 @@ classdef FMAM_ODE < handle
             val = obj.targetCurr;
         end
 
+        function val = get.assemblySampleCount(obj)
+            val = obj.discretization.assemblySampleCount;
+        end
+
+        function set.assemblySampleCount(obj,value)
+            validateattributes(value, {'numeric'}, ...
+                {'scalar', 'integer', 'positive', 'finite'}, ...
+                'FMAM_ODE', 'assemblySampleCount');
+            discretization = obj.discretization;
+            discretization.assemblySampleCount = double(value);
+            obj.discretizationConfig = discretization;
+        end
+
+        function val = get.reconstruction(obj)
+            val = obj.discretization.reconstruction;
+        end
+
+        function set.reconstruction(obj,value)
+            discretization = obj.discretization;
+            discretization.reconstruction = fmam_state_defaults.normalizeReconstruction( ...
+                value, discretization.reconstruction);
+            obj.discretizationConfig = discretization;
+        end
+
+        function val = get.discretization(obj)
+            if isempty(obj.discretizationConfig)
+                obj.discretizationConfig = fmam_state_defaults.defaultDiscretization();
+            end
+            val = obj.discretizationConfig;
+        end
+
+        function set.discretization(obj,value)
+            obj.discretizationConfig = fmam_state_defaults.normalizeDiscretization(value);
+        end
+
+        function val = get.extremaSearch(obj)
+            if isempty(obj.extremaSearchConfig)
+                obj.extremaSearchConfig = fmam_state_ops.defaultExtremaSearchSettings();
+            end
+            val = obj.extremaSearchConfig;
+        end
+
+        function set.extremaSearch(obj,value)
+            obj.extremaSearchConfig = fmam_state_ops.normalizeExtremaSearchSettings(value);
+        end
+
         function setPsiUpdateMode(obj,value)
             obj.applyPsiUpdateMode(value);
         end
@@ -141,7 +193,8 @@ classdef FMAM_ODE < handle
         end
 
         function rebuilt = rebuildState(obj)
-            rebuilt = state.fromViews(obj.obs,obj.solverView,obj.exportDerivedView());
+            rebuilt = state.fromViews( ...
+                obj.obs,obj.solverView,obj.exportDerivedView(),obj.discretization,obj.extremaSearch);
             rebuilt.checkPsiNonnegative = obj.checkPsiNonnegative;
         end
 
@@ -395,7 +448,7 @@ classdef FMAM_ODE < handle
             q_Psi = solverView.q_Psi;
             parameters = solverView.params;
 
-            L = obj.Lconst;
+            L = obj.assemblySampleCount;
             N = obj.dimVar;
             % n = obj.dimObs;
             MVar = obj.truncationOrder;
@@ -604,7 +657,8 @@ classdef FMAM_ODE < handle
             ctx.obs = obj.obs;
             ctx.derivatives = obj.derivatives;
 
-            ctx.L = obj.Lconst;
+            ctx.discretization = obj.discretization;
+            ctx.extremaSearch = obj.extremaSearch;
             ctx.dimVar = obj.dimVar;
             ctx.dimObs = obj.dimObs;
             ctx.truncationOrder = obj.truncationOrder;
@@ -674,8 +728,9 @@ classdef FMAM_ODE < handle
                 obj.phaseGrid(),obj.solverView.p_Psi,obj.solverView.q_Psi);
         end
 
-        function phi = phaseGrid(~)
-            phi = (0:fmam_state_defaults.LphiConst-1)'*2*pi/fmam_state_defaults.LphiConst;
+        function phi = phaseGrid(obj)
+            phaseSampleCount = obj.discretization.reconstruction.phaseSampleCount;
+            phi = (0:phaseSampleCount-1)'*2*pi/phaseSampleCount;
         end
 
         function solverView = coerceSolverViewInput(~,solverViewInput)
@@ -694,9 +749,7 @@ classdef FMAM_ODE < handle
 
         function derived = buildDerivedView(obj,solverView)
             derived = fmam_state_ops.buildDerivedView( ...
-                obj.obs,solverView, ...
-                fmam_state_defaults.LphiConst,fmam_state_defaults.Lconst, ...
-                fmam_state_defaults.countMax,fmam_state_defaults.errMax);
+                obj.obs,solverView,obj.discretization);
         end
 
         function opts = normalizeContinuationOptions(~,options)
@@ -830,6 +883,8 @@ classdef FMAM_ODE < handle
                 'dimVar', obj.dimVar, ...
                 'dimObs', obj.dimObs, ...
                 'dimParams', obj.dimParams, ...
+                'discretization', obj.discretization, ...
+                'extremaSearch', obj.extremaSearch, ...
                 'propertySizes', solverView.propertySizes);
         end
 
@@ -1741,6 +1796,8 @@ classdef FMAM_ODE < handle
                     'Constructor options must be supplied as name-value pairs.')
             end
 
+            defaultDiscretization = fmam_state_defaults.defaultDiscretization();
+            defaultExtremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
             opts = struct( ...
                 'derivatives', [], ...
                 'newtonOptions', struct(), ...
@@ -1750,7 +1807,10 @@ classdef FMAM_ODE < handle
                 'needLog', false, ...
                 'verbose', true, ...
                 'errBound', 1e-8, ...
-                'Lconst', 500);
+                'discretization', defaultDiscretization, ...
+                'extremaSearch', defaultExtremaSearch);
+            explicitAssemblySampleCount = [];
+            discretizationAssemblySampleCount = [];
 
             for k = 1:2:numel(varargin)
                 name = varargin{k};
@@ -1798,14 +1858,31 @@ classdef FMAM_ODE < handle
                         validateattributes(value, {'numeric'}, ...
                             {'scalar', 'positive', 'finite'}, 'FMAM_ODE', 'errBound');
                         opts.errBound = double(value);
-                    case 'lconst'
+                    case 'assemblysamplecount'
                         validateattributes(value, {'numeric'}, ...
-                            {'scalar', 'integer', 'positive', 'finite'}, 'FMAM_ODE', 'Lconst');
-                        opts.Lconst = double(value);
+                            {'scalar', 'integer', 'positive', 'finite'}, ...
+                            'FMAM_ODE', 'assemblySampleCount');
+                        explicitAssemblySampleCount = double(value);
+                        opts.discretization.assemblySampleCount = explicitAssemblySampleCount;
+                    case 'reconstruction'
+                        opts.discretization.reconstruction = fmam_state_defaults.normalizeReconstruction( ...
+                            value, opts.discretization.reconstruction);
+                    case 'discretization'
+                        opts.discretization = fmam_state_defaults.normalizeDiscretization(value);
+                        discretizationAssemblySampleCount = opts.discretization.assemblySampleCount;
+                    case 'extremasearch'
+                        opts.extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(value);
                     otherwise
                         error('FMAM_ODE:InvalidConstructorOption', ...
                             'Unsupported constructor option ''%s''.', name)
                 end
+            end
+
+            if ~isempty(explicitAssemblySampleCount) && ~isempty(discretizationAssemblySampleCount) && ...
+                    explicitAssemblySampleCount ~= discretizationAssemblySampleCount
+                error('FMAM_ODE:ConflictingAssemblySampleCount', ...
+                    ['Constructor options ''assemblySampleCount'' and ''discretization'' ', ...
+                     'must agree when both are provided.'])
             end
         end
     end

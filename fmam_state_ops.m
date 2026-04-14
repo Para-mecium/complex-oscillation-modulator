@@ -1,7 +1,55 @@
 classdef fmam_state_ops
     % Canonical FMAM state helper boundary.
     % This is the only supported neutral numeric API for new production and test code.
+    properties (Constant)
+        maxRefinementRounds = 20
+        extremaResidualTolerance = 1e-3
+    end
+
     methods (Static)
+        function extremaSearch = defaultExtremaSearchSettings()
+            extremaSearch = struct( ...
+                'maxRefinementRounds', fmam_state_ops.maxRefinementRounds, ...
+                'extremaResidualTolerance', fmam_state_ops.extremaResidualTolerance);
+        end
+
+        function extremaSearch = normalizeExtremaSearchSettings(extremaSearch)
+            defaults = fmam_state_ops.defaultExtremaSearchSettings();
+            if nargin < 1 || isempty(extremaSearch)
+                extremaSearch = defaults;
+                return
+            end
+            if ~isstruct(extremaSearch)
+                error('fmam_state_ops:InvalidExtremaSearch', ...
+                    'extremaSearch must be a struct.')
+            end
+
+            allowedFields = {'maxRefinementRounds', 'extremaResidualTolerance'};
+            fieldNames = fieldnames(extremaSearch);
+            for i = 1:numel(fieldNames)
+                if ~ismember(fieldNames{i}, allowedFields)
+                    error('fmam_state_ops:InvalidExtremaSearch', ...
+                        'Unsupported extremaSearch field ''%s''.', fieldNames{i})
+                end
+            end
+
+            merged = defaults;
+            for i = 1:numel(fieldNames)
+                merged.(fieldNames{i}) = extremaSearch.(fieldNames{i});
+            end
+
+            validateattributes(merged.maxRefinementRounds, {'numeric'}, ...
+                {'scalar', 'integer', 'positive', 'finite'}, ...
+                'fmam_state_ops', 'extremaSearch.maxRefinementRounds');
+            validateattributes(merged.extremaResidualTolerance, {'numeric'}, ...
+                {'scalar', 'positive', 'finite'}, ...
+                'fmam_state_ops', 'extremaSearch.extremaResidualTolerance');
+
+            merged.maxRefinementRounds = double(merged.maxRefinementRounds);
+            merged.extremaResidualTolerance = double(merged.extremaResidualTolerance);
+            extremaSearch = merged;
+        end
+
         function TS_obs = getObs(obs,TS_var)
             TS_obs = zeros(size(TS_var,1),numel(obs));
             for k = 1:numel(obs)
@@ -10,16 +58,16 @@ classdef fmam_state_ops
             end
         end
 
-        function [phi_max,phi_min,amplitude,var_max,var_min] = FindExtreme(p,q,L,countMax,errMax)
-            if nargin < 4 || isempty(countMax)
-                countMax = fmam_state_defaults.countMax;
+        function [phi_max,phi_min,amplitude,var_max,var_min] = FindExtreme(p,q,L,maxRefinementRounds,extremaResidualTolerance)
+            if nargin < 4 || isempty(maxRefinementRounds)
+                maxRefinementRounds = fmam_state_ops.maxRefinementRounds;
             end
-            if nargin < 5 || isempty(errMax)
-                errMax = fmam_state_defaults.errMax;
+            if nargin < 5 || isempty(extremaResidualTolerance)
+                extremaResidualTolerance = fmam_state_ops.extremaResidualTolerance;
             end
 
             count = 0;
-            while count < countMax
+            while count < maxRefinementRounds
                 phi = (0:L-1)'/L*2*pi;
                 TS = fmam_state_ops.evaluateTrigSeries(phi,p,q);
 
@@ -32,7 +80,7 @@ classdef fmam_state_ops
                 err_phiMax = abs(fmam_state_ops.residuePhiVar(p,q,phi_max));
                 err_phiMin = abs(fmam_state_ops.residuePhiVar(p,q,phi_min));
                 err = max(err_phiMax,err_phiMin);
-                if err < errMax
+                if err < extremaResidualTolerance
                     break
                 end
 
@@ -189,7 +237,7 @@ classdef fmam_state_ops
 
         function dt = timeIncrementsFromCoefficients(p,q,numIntervals)
             if nargin < 3 || isempty(numIntervals)
-                numIntervals = fmam_state_defaults.LphiConst;
+                numIntervals = fmam_state_defaults.defaultDiscretization().reconstruction.phaseSampleCount;
             end
 
             phiNodes = (0:numIntervals-1)'*2*pi/numIntervals;
@@ -239,31 +287,24 @@ classdef fmam_state_ops
             [p_variable,q_variable] = fmam_state_ops.projectFourierSeries(TS_var_equal,M);
         end
 
-        function solverView = buildSolverViewFromTrajectory(obs,params,t,TS_var,M,PV,Lconst,Lphi,countMax,errMax)
+        function solverView = buildSolverViewFromTrajectory(obs,params,t,TS_var,M,PV,discretization,extremaSearch)
             % Canonical trajectory -> solverView adapter used by constructors and fixtures.
-            if nargin < 7 || isempty(Lconst)
-                Lconst = fmam_state_defaults.Lconst;
-            end
-            if nargin < 8 || isempty(Lphi)
-                Lphi = fmam_state_defaults.LphiConst;
-            end
-            if nargin < 9 || isempty(countMax)
-                countMax = fmam_state_defaults.countMax;
-            end
-            if nargin < 10 || isempty(errMax)
-                errMax = fmam_state_defaults.errMax;
-            end
+            discretization = fmam_state_defaults.normalizeDiscretization(discretization);
+            extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(extremaSearch);
+            reconstruction = discretization.reconstruction;
 
             t = t(:) - t(1);
             params = reshape(params,1,[]);
             TS_obs = fmam_state_ops.getObs(obs,TS_var);
             [~,~,p_Psi,q_Psi,p_var,q_var] = fmam_state_ops.reconstructSolverCoefficients( ...
-                TS_var,TS_obs,t,M,PV,Lconst,Lphi);
+                TS_var,TS_obs,t,M,PV,discretization);
 
             varDerived = fmam_state_ops.buildVariableDerivedState( ...
-                p_var,q_var,p_Psi,q_Psi,Lphi,countMax,errMax);
+                p_var,q_var,p_Psi,q_Psi, ...
+                reconstruction.phaseSampleCount, ...
+                extremaSearch);
             obsDerived = fmam_state_ops.buildObservableDerivedState( ...
-                obs,p_var,q_var,p_Psi,q_Psi,Lphi,Lconst,countMax,errMax);
+                obs,p_var,q_var,p_Psi,q_Psi,discretization,extremaSearch);
 
             solverView = struct( ...
                 'params', params, ...
@@ -279,20 +320,10 @@ classdef fmam_state_ops
             solverView = fmam_state_ops.normalizeSolverView(solverView);
         end
 
-        function derived = buildDerivedView(obs,solverView,Lphi,Lconst,countMax,errMax)
+        function derived = buildDerivedView(obs,solverView,discretization)
             % Canonical derived view builder for downstream solver/postprocessing callers.
-            if nargin < 3 || isempty(Lphi)
-                Lphi = fmam_state_defaults.LphiConst;
-            end
-            if nargin < 4 || isempty(Lconst)
-                Lconst = fmam_state_defaults.Lconst;
-            end
-            if nargin < 5 || isempty(countMax)
-                countMax = fmam_state_defaults.countMax;
-            end
-            if nargin < 6 || isempty(errMax)
-                errMax = fmam_state_defaults.errMax;
-            end
+            discretization = fmam_state_defaults.normalizeDiscretization(discretization);
+            Lphi = discretization.reconstruction.phaseSampleCount;
 
             phi = (0:Lphi-1)'*2*pi/Lphi;
             derived = struct();
@@ -353,7 +384,8 @@ classdef fmam_state_ops
             end
         end
 
-        function derived = buildVariableDerivedState(p_var,q_var,p_Psi,q_Psi,Lphi,countMax,errMax)
+        function derived = buildVariableDerivedState(p_var,q_var,p_Psi,q_Psi,Lphi,extremaSearch)
+            extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(extremaSearch);
             dimSys = size(p_var,2);
             Phi_max = zeros(1,dimSys);
             Phi_min = zeros(1,dimSys);
@@ -363,7 +395,9 @@ classdef fmam_state_ops
 
             for i = 1:dimSys
                 [Phi_max(i),Phi_min(i),Amp(i),VariableMax(i),VariableMin(i)] = ...
-                    fmam_state_ops.FindExtreme(p_var(:,i),q_var(:,i),Lphi,countMax,errMax);
+                    fmam_state_ops.FindExtreme( ...
+                        p_var(:,i),q_var(:,i),Lphi, ...
+                        extremaSearch.maxRefinementRounds,extremaSearch.extremaResidualTolerance);
             end
             tMax = fmam_state_ops.Trintegration(p_Psi,q_Psi,zeros(dimSys,1),Phi_max');
             Phase = repmat(tMax',dimSys,1) - repmat(tMax,1,dimSys);
@@ -390,9 +424,13 @@ classdef fmam_state_ops
             [p_obs,q_obs] = fmam_state_ops.projectFourierSeries(observableSeries,M);
         end
 
-        function derived = buildObservableDerivedState(obs,p_var,q_var,p_Psi,q_Psi,Lphi,Lconst,countMax,errMax)
+        function derived = buildObservableDerivedState(obs,p_var,q_var,p_Psi,q_Psi,discretization,extremaSearch)
+            discretization = fmam_state_defaults.normalizeDiscretization(discretization);
+            extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(extremaSearch);
+            reconstruction = discretization.reconstruction;
             M = size(q_var,1);
-            [p_obs,q_obs] = fmam_state_ops.buildObservableFourierCoefficients(obs,p_var,q_var,M,Lphi);
+            [p_obs,q_obs] = fmam_state_ops.buildObservableFourierCoefficients( ...
+                obs,p_var,q_var,M,reconstruction.phaseSampleCount);
             dimObs = size(p_obs,2);
 
             Phi_max = zeros(1,dimObs);
@@ -403,7 +441,9 @@ classdef fmam_state_ops
 
             for i = 1:dimObs
                 [Phi_max(i),Phi_min(i),Amp(i),ObservableMax(i),ObservableMin(i)] = ...
-                    fmam_state_ops.FindExtreme(p_obs(:,i),q_obs(:,i),Lconst,countMax,errMax);
+                    fmam_state_ops.FindExtreme( ...
+                        p_obs(:,i),q_obs(:,i),reconstruction.phaseSampleCount, ...
+                        extremaSearch.maxRefinementRounds,extremaSearch.extremaResidualTolerance);
             end
             tMax = fmam_state_ops.Trintegration(p_Psi,q_Psi,zeros(dimObs,1),Phi_max');
             Phase = repmat(tMax',dimObs,1) - repmat(tMax,1,dimObs);
@@ -420,7 +460,9 @@ classdef fmam_state_ops
         end
 
         function [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
-                reconstructSolverCoefficients(TS_variable,TS_observable,t,M,PV,Lconst,Lphi)
+                reconstructSolverCoefficients(TS_variable,TS_observable,t,M,PV,discretization)
+            discretization = fmam_state_defaults.normalizeDiscretization(discretization);
+            reconstruction = discretization.reconstruction;
             dim = size(TS_variable,2);
             n = size(TS_observable,2);
             fmam_state_ops.validatePrimaryVariable(PV,dim,n);
@@ -433,11 +475,11 @@ classdef fmam_state_ops
                     't must span one positive period.')
             end
 
-            phi = (0:Lphi-1)'*2*pi/Lphi;
-            t1 = linspace(0,T,Lconst+1)';
+            phi = (0:reconstruction.phaseSampleCount-1)'*2*pi/reconstruction.phaseSampleCount;
+            t1 = linspace(0,T,reconstruction.timeResampleCount+1)';
             t1(end) = [];
-            TS_variable_1 = zeros(Lconst,dim);
-            TS_observable_1 = zeros(Lconst,n);
+            TS_variable_1 = zeros(reconstruction.timeResampleCount,dim);
+            TS_observable_1 = zeros(reconstruction.timeResampleCount,n);
             for i = 1:dim
                 TS_variable_1(:,i) = spline(t,TS_variable(:,i),t1);
             end
@@ -478,24 +520,24 @@ classdef fmam_state_ops
                      'branches over one period.']);
             end
 
-            Atrans = zeros(Lphi,Lphi+1);
+            Atrans = zeros(reconstruction.phaseSampleCount,reconstruction.phaseSampleCount+1);
             Atrans(1,1) = -3;Atrans(1,2) = 4;Atrans(1,3) = -1;
-            for j = 2:Lphi
+            for j = 2:reconstruction.phaseSampleCount
                 Atrans(j,j+1) = 1;
                 Atrans(j,j-1) = -1;
             end
-            Atrans = Atrans/(4*pi/Lphi);
+            Atrans = Atrans/(4*pi/reconstruction.phaseSampleCount);
 
-            t_phi = zeros(Lphi,1);
-            TS_variable_phi = zeros(Lphi,dim);
-            TS_observable_phi = zeros(Lphi,n);
+            t_phi = zeros(reconstruction.phaseSampleCount,1);
+            TS_variable_phi = zeros(reconstruction.phaseSampleCount,dim);
+            TS_observable_phi = zeros(reconstruction.phaseSampleCount,n);
             leftData = fmam_state_ops.buildPrimaryBranchInterpolation( ...
                 X(leftBranch),t1(leftBranch),TS_variable_1(leftBranch,:),TS_observable_1(leftBranch,:));
             rightData = fmam_state_ops.buildPrimaryBranchInterpolation( ...
                 X(rightBranch),t1(rightBranch),TS_variable_1(rightBranch,:),TS_observable_1(rightBranch,:));
-            for i = 1:Lphi
+            for i = 1:reconstruction.phaseSampleCount
                 targetValue = a*cos(phi(i))+b;
-                if i <= round(Lphi/2)
+                if i <= round(reconstruction.phaseSampleCount/2)
                     branchData = leftData;
                 else
                     branchData = rightData;
@@ -513,7 +555,8 @@ classdef fmam_state_ops
 
             [p_Psi,q_Psi] = fmam_state_ops.projectFourierSeries(Psi,M - 1);
             fmam_state_ops.assertPositivePsi(fmam_state_ops.evaluateTrigSeries(phi,p_Psi,q_Psi));
-            fmam_state_ops.assertPositiveTimeIncrements(p_Psi,q_Psi,Lphi);
+            fmam_state_ops.assertPositiveTimeIncrements( ...
+                p_Psi,q_Psi,reconstruction.phaseSampleCount);
 
             [p_variable,q_variable] = fmam_state_ops.projectFourierSeries(TS_variable_phi,M);
             if n > 0
@@ -704,7 +747,7 @@ classdef fmam_state_ops
         function derived = derivedViewFromSnapshot(snapshot,Lphi)
             % Canonical extraction of derived arrays from rich state snapshots.
             if nargin < 2 || isempty(Lphi)
-                Lphi = fmam_state_defaults.LphiConst;
+                Lphi = fmam_state_defaults.defaultDiscretization().reconstruction.phaseSampleCount;
             end
             phi = (0:Lphi-1)'*2*pi/Lphi;
             Psi = fmam_state_ops.evaluateTrigSeries(phi,snapshot.p_Psi,snapshot.q_Psi);

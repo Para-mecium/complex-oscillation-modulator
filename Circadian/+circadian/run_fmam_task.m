@@ -82,9 +82,9 @@ function derivedView = resolve_initial_derived_view(cfg, model, solverView)
 if isfield(cfg, 'initialDerivedView') && ~isempty(cfg.initialDerivedView)
     derivedView = cfg.initialDerivedView;
 else
+    discretization = fmam_state_defaults.defaultDiscretization();
     derivedView = fmam_state_ops.buildDerivedView( ...
-        model.observables, solverView, fmam_state_defaults.LphiConst, fmam_state_defaults.Lconst, ...
-        fmam_state_defaults.countMax, fmam_state_defaults.errMax);
+        model.observables, solverView, discretization);
 end
 end
 

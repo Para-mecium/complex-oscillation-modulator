@@ -108,6 +108,55 @@ function testExportedViewsSupportLegacyReprocessingInputs(testCase)
     verifyGreaterThan(testCase, searchWindow, derived.period);
 end
 
+function testConstructorAssemblySampleCountSetsDiscretization(testCase)
+    sys = make_harmonic_system();
+    obs = {};
+    derivatives = build_symbolic_derivatives(sys, obs, 1);
+    PV = struct('name', 'var', 'idx', 1);
+    solverView = make_reference_solver_view(obs, 1, 3, PV);
+    item = struct('prop', 'p_Psi', 'idx', 1, 'target', solverView.p_Psi(1));
+
+    task = FMAM_ODE(sys, obs, solverView, item, 1, 0.1, 1e-6, ...
+        'derivatives', derivatives, 'assemblySampleCount', 128);
+
+    verifyEqual(testCase, task.assemblySampleCount, 128);
+    verifyEqual(testCase, task.discretization.assemblySampleCount, 128);
+end
+
+function testConstructorRejectsLegacyLconstOption(testCase)
+    sys = make_harmonic_system();
+    obs = {};
+    derivatives = build_symbolic_derivatives(sys, obs, 1);
+    PV = struct('name', 'var', 'idx', 1);
+    solverView = make_reference_solver_view(obs, 1, 3, PV);
+    item = struct('prop', 'p_Psi', 'idx', 1, 'target', solverView.p_Psi(1));
+
+    verifyError(testCase, @() FMAM_ODE(sys, obs, solverView, item, 1, 0.1, 1e-6, ...
+        'derivatives', derivatives, 'Lconst', 128), ...
+        'FMAM_ODE:InvalidConstructorOption');
+end
+
+function testReconstructionSettingsDriveExportedAndRebuiltViews(testCase)
+    sys = make_harmonic_system();
+    obs = {};
+    derivatives = build_symbolic_derivatives(sys, obs, 1);
+    PV = struct('name', 'var', 'idx', 1);
+    solverView = make_reference_solver_view(obs, 1, 3, PV);
+    item = struct('prop', 'p_Psi', 'idx', 1, 'target', solverView.p_Psi(1));
+    reconstruction = struct('timeResampleCount', 4096, 'phaseSampleCount', 64);
+
+    task = FMAM_ODE(sys, obs, solverView, item, 1, 0.1, 1e-6, ...
+        'derivatives', derivatives, 'reconstruction', reconstruction);
+    derived = task.exportDerivedView();
+    rebuilt = task.rebuildState();
+
+    verifyEqual(testCase, size(derived.TS_var, 1), reconstruction.phaseSampleCount);
+    verifyEqual(testCase, task.reconstruction.phaseSampleCount, reconstruction.phaseSampleCount);
+    verifyEqual(testCase, rebuilt.discretization.reconstruction.phaseSampleCount, ...
+        reconstruction.phaseSampleCount);
+    verifyEqual(testCase, size(rebuilt.TS_var, 1), reconstruction.phaseSampleCount);
+end
+
 function task = make_reference_task()
     sys = make_harmonic_system();
     obs = {};
@@ -122,10 +171,11 @@ function solverView = make_reference_solver_view(obs, params, M, PV)
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, M, PV);
+    discretization = state.defaultDiscretization();
+    extremaSearch = state.defaultExtremaSearch();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, M, PV, ...
-        state.Lconst, state.LphiConst, ...
-        state.countMax, state.errMax);
+        discretization, extremaSearch);
 end
 
 function [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, M, PV)

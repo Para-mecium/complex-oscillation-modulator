@@ -4,9 +4,10 @@ classdef state_ops
             TS_obs = fmam_state_ops.getObs(obs,TS_var);
         end
 
-        function [phi_max,phi_min,amplitude,var_max,var_min] = FindExtreme(p,q,L,countMax,errMax)
+        function [phi_max,phi_min,amplitude,var_max,var_min] = FindExtreme(p,q,L,maxRefinementRounds,extremaResidualTolerance)
             [phi_max,phi_min,amplitude,var_max,var_min] = ...
-                fmam_state_ops.FindExtreme(p,q,L,countMax,errMax);
+                fmam_state_ops.FindExtreme( ...
+                    p,q,L,maxRefinementRounds,extremaResidualTolerance);
         end
 
         function output = Trintegration(p,q,phi_L,phi_U)
@@ -61,34 +62,34 @@ classdef state_ops
             [p_variable,q_variable] = fmam_state_ops.reprojectEqualTimeFourier(tSeries,TS_var,M);
         end
 
-        function solverView = buildSolverViewFromTrajectory(obs,params,t,TS_var,M,PV,Lconst,Lphi,countMax,errMax)
+        function solverView = buildSolverViewFromTrajectory(obs,params,t,TS_var,M,PV,discretization,extremaSearch)
             solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
-                obs,params,t,TS_var,M,PV,Lconst,Lphi,countMax,errMax);
+                obs,params,t,TS_var,M,PV,discretization,extremaSearch);
         end
 
-        function derived = buildDerivedView(obs,solverView,Lphi,Lconst,countMax,errMax)
-            derived = fmam_state_ops.buildDerivedView(obs,solverView,Lphi,Lconst,countMax,errMax);
+        function derived = buildDerivedView(obs,solverView,discretization)
+            derived = fmam_state_ops.buildDerivedView(obs,solverView,discretization);
         end
 
-        function derived = buildVariableDerivedState(p_var,q_var,p_Psi,q_Psi,Lphi,countMax,errMax)
+        function derived = buildVariableDerivedState(p_var,q_var,p_Psi,q_Psi,Lphi,extremaSearch)
             derived = fmam_state_ops.buildVariableDerivedState( ...
-                p_var,q_var,p_Psi,q_Psi,Lphi,countMax,errMax);
+                p_var,q_var,p_Psi,q_Psi,Lphi,extremaSearch);
         end
 
         function [p_obs,q_obs] = buildObservableFourierCoefficients(obs,p_var,q_var,M,Lphi)
             [p_obs,q_obs] = fmam_state_ops.buildObservableFourierCoefficients(obs,p_var,q_var,M,Lphi);
         end
 
-        function derived = buildObservableDerivedState(obs,p_var,q_var,p_Psi,q_Psi,Lphi,Lconst,countMax,errMax)
+        function derived = buildObservableDerivedState(obs,p_var,q_var,p_Psi,q_Psi,discretization,extremaSearch)
             derived = fmam_state_ops.buildObservableDerivedState( ...
-                obs,p_var,q_var,p_Psi,q_Psi,Lphi,Lconst,countMax,errMax);
+                obs,p_var,q_var,p_Psi,q_Psi,discretization,extremaSearch);
         end
 
         function [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
-                reconstructSolverCoefficients(TS_variable,TS_observable,t,M,PV,Lconst,Lphi)
+                reconstructSolverCoefficients(TS_variable,TS_observable,t,M,PV,discretization)
             [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
                 fmam_state_ops.reconstructSolverCoefficients( ...
-                    TS_variable,TS_observable,t,M,PV,Lconst,Lphi);
+                    TS_variable,TS_observable,t,M,PV,discretization);
         end
 
         function value = observableTargetCurrent(obs,p_var,q_var,Phi,k)
