@@ -1,5 +1,5 @@
 function tests = test_state_transaction_adapter
-%TEST_STATE_TRANSACTION_ADAPTER Contract tests for solverView export/load APIs.
+%TEST_STATE_TRANSACTION_ADAPTER Contract tests for solverView export/load and explicit state rebuild APIs.
 
     tests = functiontests(localfunctions);
 end
@@ -37,10 +37,10 @@ function testLoadPreservesMatrixBlockShapes(testCase)
     verify_solver_view(testCase, task.exportSolverView(), snapshot0);
 end
 
-function testCompatibilitySnapshotMatchesExportedResults(testCase)
+function testRebuildStateMatchesExportedResults(testCase)
     task = make_reference_task();
-    stat0 = task.stat;
-    stat1 = task.stat;
+    stat0 = task.rebuildState();
+    stat1 = task.rebuildState();
     derived = task.exportDerivedView();
     view = task.exportSolverView();
 
@@ -59,7 +59,7 @@ function testStateFromViewsMatchesCompatibilityAdapter(testCase)
     derived = task.exportDerivedView();
 
     rebuilt = state.fromViews(task.obs, view, derived);
-    compat = task.stat;
+    compat = task.rebuildState();
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
     verifyEqual(testCase, rebuilt.p_Psi, compat.p_Psi, 'AbsTol', 1e-12);
@@ -75,7 +75,7 @@ function testStateFromSolverViewMatchesCompatibilityAdapter(testCase)
     view = task.exportSolverView();
 
     rebuilt = state.fromSolverView(task.obs, view);
-    compat = task.stat;
+    compat = task.rebuildState();
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
     verifyEqual(testCase, rebuilt.p_Psi, compat.p_Psi, 'AbsTol', 1e-12);
@@ -85,8 +85,9 @@ end
 
 function testStateFromSolverSnapshotMatchesCompatibilityAdapter(testCase)
     task = make_reference_task();
-    compat = task.stat;
-    snapshot = compat.snapshotSolverState();
+    compat = task.rebuildState();
+    snapshot = fmam_state_ops.buildStateSnapshotFromViews( ...
+        task.exportSolverView(), task.exportDerivedView());
 
     rebuilt = state.fromSolverSnapshot(task.obs, snapshot);
 

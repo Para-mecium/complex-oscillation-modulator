@@ -89,62 +89,6 @@ classdef state < handle
             obj.refreshDerivedState();
         end
 
-        function snapshot = snapshotSolverState(obj)
-            fieldNames = state.solverStateFields();
-            snapshot = struct();
-            for i = 1:numel(fieldNames)
-                fieldName = fieldNames{i};
-                snapshot.(fieldName) = obj.(fieldName);
-            end
-        end
-
-        function restoreSolverState(obj,snapshot)
-            fieldNames = state.solverStateFields();
-            if ~isstruct(snapshot) || ~all(isfield(snapshot,fieldNames))
-                error('state:InvalidSnapshot', ...
-                    'snapshot must contain the full solver state.');
-            end
-
-            for i = 1:numel(fieldNames)
-                fieldName = fieldNames{i};
-                obj.(fieldName) = snapshot.(fieldName);
-            end
-        end
-
-        function applyUnknownIncrement(obj,meta,increments,scale)
-            if nargin < 4 || isempty(scale)
-                scale = 1;
-            end
-            if ~isstruct(meta) || ~isfield(meta,'unknowns') || ~isfield(meta,'indexMap')
-                error('state:InvalidMeta', ...
-                    'meta must contain unknowns and indexMap fields.');
-            end
-
-            scaledIncrement = scale * increments;
-            for i = 1:numel(meta.unknowns)
-                propname = meta.unknowns{i};
-                if ~isfield(meta.indexMap,propname)
-                    error('state:InvalidMeta', ...
-                        'indexMap is missing the unknown block ''%s''.', propname)
-                end
-                idxProp = meta.indexMap.(propname);
-                columns = size(idxProp,2);
-                propIncrement = reshape(scaledIncrement(idxProp(:)),[],columns);
-                obj.add(propname,'all',propIncrement);
-            end
-            obj.assertTimeMapInvariant();
-        end
-
-        function value = currentUnknownInfNorm(obj,unknowns)
-            value = 0;
-            for i = 1:numel(unknowns)
-                currentValue = obj.(unknowns{i});
-                if ~isempty(currentValue)
-                    value = max(value,norm(currentValue(:),inf));
-                end
-            end
-        end
-
         function assertTimeMapInvariant(obj)
             issue = fmam_state_ops.timeMapInvariantIssue(obj.Psi,obj.p_Psi,obj.q_Psi,obj.LphiConst);
             obj.warnOnTimeMapIssue(issue);
@@ -350,6 +294,19 @@ classdef state < handle
     end
 
     methods (Access = private)
+        function loadSolverSnapshot(obj,snapshot)
+            fieldNames = state.solverStateFields();
+            if ~isstruct(snapshot) || ~all(isfield(snapshot,fieldNames))
+                error('state:InvalidSnapshot', ...
+                    'snapshot must contain the full solver state.');
+            end
+
+            for i = 1:numel(fieldNames)
+                fieldName = fieldNames{i};
+                obj.(fieldName) = snapshot.(fieldName);
+            end
+        end
+
         function warnOnTimeMapIssue(obj,issue)
             if ~obj.checkPsiNonnegative
                 obj.timeMapWarningSignature = '';
@@ -507,7 +464,7 @@ classdef state < handle
 
             obj = state();
             obj.obs = obs;
-            obj.restoreSolverState(snapshot);
+            obj.loadSolverSnapshot(snapshot);
         end
 
         function obj = fromSolverView(obs,solverView)

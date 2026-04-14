@@ -687,7 +687,7 @@ classdef fmam_state_ops
         end
 
         function solverView = solverViewFromSnapshot(snapshot)
-            % Canonical extraction of solver coefficients from legacy rich snapshots.
+            % Canonical extraction of solver coefficients from rich state snapshots.
             solverView = fmam_state_ops.normalizeSolverView(struct( ...
                 'params', snapshot.params, ...
                 'p_Psi', snapshot.p_Psi, ...
@@ -702,7 +702,7 @@ classdef fmam_state_ops
         end
 
         function derived = derivedViewFromSnapshot(snapshot,Lphi)
-            % Canonical extraction of derived arrays from legacy rich snapshots.
+            % Canonical extraction of derived arrays from rich state snapshots.
             if nargin < 2 || isempty(Lphi)
                 Lphi = fmam_state_defaults.LphiConst;
             end
@@ -731,7 +731,7 @@ classdef fmam_state_ops
         end
 
         function snapshot = buildStateSnapshotFromViews(solverView,derived)
-            % Canonical view -> rich snapshot adapter for legacy state restore/rebuild paths.
+            % Canonical view -> rich snapshot adapter for explicit state rebuild paths.
             [a,b] = fmam_state_ops.primaryAmplitudeAndCenter(derived,solverView.PV);
             snapshot = struct( ...
                 'PV', solverView.PV, ...

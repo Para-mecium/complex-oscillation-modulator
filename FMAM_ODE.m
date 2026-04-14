@@ -71,7 +71,6 @@ classdef FMAM_ODE < handle
     end
 
     properties (Dependent)
-        stat
         isPsiUpdated
         items_per_curr
     end
@@ -121,11 +120,6 @@ classdef FMAM_ODE < handle
             obj.targetCurr = obj.initialTargetValues();
         end
 
-        function val = get.stat(obj)
-            val = state.fromViews(obj.obs,obj.solverView,obj.exportDerivedView());
-            val.checkPsiNonnegative = obj.checkPsiNonnegative;
-        end
-
         function val = get.isPsiUpdated(obj)
             val = obj.psiUpdateMode;
         end
@@ -144,6 +138,11 @@ classdef FMAM_ODE < handle
 
         function perturb(obj)
             obj.targetCurr = obj.targetCurr + obj.stepsize;
+        end
+
+        function rebuilt = rebuildState(obj)
+            rebuilt = state.fromViews(obj.obs,obj.solverView,obj.exportDerivedView());
+            rebuilt.checkPsiNonnegative = obj.checkPsiNonnegative;
         end
 
         function step(obj)

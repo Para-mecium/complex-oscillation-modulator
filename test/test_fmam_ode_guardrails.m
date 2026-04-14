@@ -131,7 +131,7 @@ function testPsiNonnegativeCheckDefaultsOnAndCanBeConfigured(testCase)
 
     task.checkPsiNonnegative = false;
     verifyFalse(testCase, task.checkPsiNonnegative);
-    verifyFalse(testCase, task.stat.checkPsiNonnegative);
+    verifyFalse(testCase, task.rebuildState().checkPsiNonnegative);
 
     task.checkPsiNonnegative = true;
     verifyTrue(testCase, task.checkPsiNonnegative);
@@ -160,11 +160,8 @@ end
 
 function testStructuralPropertiesCannotBeReboundAfterConstruction(testCase)
     task = make_guardrail_task();
-    solverView = task.exportSolverView();
-    otherState = make_guardrail_state(task.obs, solverView.params);
 
     verifyPropertyWriteFails(testCase, @() assign_continuation_options(task));
-    verifyPropertyWriteFails(testCase, @() assign_state(task, otherState));
     verifyPropertyWriteFails(testCase, @() assign_items_perturb(task));
 end
 
@@ -343,10 +340,6 @@ end
 
 function assign_continuation_options(task)
     task.continuationOptions = struct('predictorMode', 'constant');
-end
-
-function assign_state(task, otherState)
-    task.stat = otherState;
 end
 
 function mutate_solver_view(task, editor)

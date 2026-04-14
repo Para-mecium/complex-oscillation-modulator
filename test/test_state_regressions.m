@@ -41,24 +41,23 @@ end
 
 function testNonMonotoneTimeMapEmitsNamedWarning(testCase)
     stat = make_reference_state();
-    snapshot = stat.snapshotSolverState();
+    snapshot = make_solver_snapshot(stat);
     snapshot.p_Psi = zeros(size(snapshot.p_Psi));
     snapshot.q_Psi = zeros(size(snapshot.q_Psi));
-    stat.restoreSolverState(snapshot);
+    stat = state.fromSolverSnapshot(stat.obs, snapshot);
 
     verifyWarning(testCase, @() stat.assertTimeMapInvariant(), 'state:NonMonotoneTimeMap');
 
-    statForTimeGrid = make_reference_state();
-    statForTimeGrid.restoreSolverState(snapshot);
+    statForTimeGrid = state.fromSolverSnapshot(stat.obs, snapshot);
     verifyWarning(testCase, @() statForTimeGrid.t, 'state:NonMonotoneTimeMap');
 end
 
 function testNonMonotoneTimeMapCheckCanBeDisabled(testCase)
     stat = make_reference_state();
-    snapshot = stat.snapshotSolverState();
+    snapshot = make_solver_snapshot(stat);
     snapshot.p_Psi = zeros(size(snapshot.p_Psi));
     snapshot.q_Psi = zeros(size(snapshot.q_Psi));
-    stat.restoreSolverState(snapshot);
+    stat = state.fromSolverSnapshot(stat.obs, snapshot);
     stat.checkPsiNonnegative = false;
 
     verifyWarningFree(testCase, @() stat.assertTimeMapInvariant());
@@ -95,4 +94,10 @@ function stat = make_reference_state()
     t(end) = [];
     x = [cos(t), sin(t)];
     stat = state({}, 1, t, x, 5, struct('name', 'var', 'idx', 1));
+end
+
+function snapshot = make_solver_snapshot(stat)
+    snapshot = fmam_state_ops.buildStateSnapshotFromViews( ...
+        fmam_state_ops.solverViewFromState(stat), ...
+        fmam_state_ops.derivedViewFromState(stat));
 end

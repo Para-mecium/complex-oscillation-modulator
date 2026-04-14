@@ -127,7 +127,9 @@ end
 
 function testDerivedViewFromSnapshotReconstructsCanonicalSeries(testCase)
     stat = make_reference_state();
-    snapshot = stat.snapshotSolverState();
+    snapshot = fmam_state_ops.buildStateSnapshotFromViews( ...
+        fmam_state_ops.solverViewFromState(stat), ...
+        fmam_state_ops.derivedViewFromState(stat));
 
     derived = fmam_state_ops.derivedViewFromSnapshot(snapshot, stat.LphiConst);
 
