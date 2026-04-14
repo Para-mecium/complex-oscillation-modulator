@@ -261,3 +261,41 @@ function testCandidateValidatorStopsAtScaledIncrementTolerance(testCase)
         validation = struct('isValid', false, 'message', 'always invalid');
     end
 end
+
+function testUnknownOptionFieldFailsFast(testCase)
+    x = 0;
+
+    problem = struct();
+    problem.linearize = @linearize;
+    problem.snapshot = @snapshot;
+    problem.restore = @restore;
+    problem.applyIncrement = @applyIncrement;
+    problem.measure = @measure;
+
+    verifyError(testCase, ...
+        @() solve_generic_newton(problem, struct('maxIteratoins', 1)), ...
+        'solve_generic_newton:UnknownOption');
+
+    function [JCurrent, residual, meta] = linearize()
+        JCurrent = 1;
+        residual = 1 - x;
+        meta = struct('iterateNorm', abs(x));
+    end
+
+    function value = snapshot()
+        value = x;
+    end
+
+    function restore(snapshot)
+        x = snapshot;
+    end
+
+    function applyIncrement(~, delta, scale)
+        x = x + scale * delta;
+    end
+
+    function measurement = measure()
+        err = abs(1 - x);
+        measurement = struct('errorVec', err, 'converged', false, 'scalarError', err);
+    end
+end

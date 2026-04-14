@@ -51,6 +51,15 @@ function testDirectOnlyReportsIllConditionedRectangularSystem(testCase)
     verifyLessThan(testCase, result.directConditionEstimate, default_options().directConditionThreshold);
 end
 
+function testUnknownOptionFieldFailsFast(testCase)
+    A = eye(2);
+    b = [1; 0];
+
+    verifyError(testCase, ...
+        @() solve_regularized_linear_system(A, b, struct('lambdaGorw', 10), 'best_effort'), ...
+        'solve_regularized_linear_system:UnknownOption');
+end
+
 function opts = default_options()
     opts = struct( ...
         'initialLambda', 1e-8, ...

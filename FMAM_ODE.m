@@ -105,7 +105,7 @@ classdef FMAM_ODE < handle
             obj.accuracy = err;
 
             obj.derivatives = ctorOptions.derivatives;
-            obj.newtonOptions = ctorOptions.newtonOptions;
+            obj.newtonOptions = obj.normalizeNewtonOptions(ctorOptions.newtonOptions, 'newtonOptions');
             obj.continuationOptions = ctorOptions.continuationOptions;
             obj.setPsiUpdateMode(ctorOptions.isPsiUpdated);
             obj.needLog = ctorOptions.needLog;
@@ -541,9 +541,59 @@ classdef FMAM_ODE < handle
         end
 
         function opts = effectiveNewtonOptions(obj,overrideOptions)
+            opts = obj.normalizeNewtonOptions(obj.newtonOptions, 'newtonOptions');
+            opts = FMAM_ODE.mergeOptionStruct( ...
+                opts,overrideOptions,'overrideOptions','FMAM_ODE:UnknownNewtonOption');
+            opts = obj.normalizeNewtonOptions(opts, 'overrideOptions');
+        end
+
+        function opts = linearSolverOptions(obj,overrideOptions)
+            newtonOpts = obj.effectiveNewtonOptions(overrideOptions);
+            opts = struct( ...
+                'initialLambda', newtonOpts.initialLambda, ...
+                'lambdaMin', newtonOpts.lambdaMin, ...
+                'lambdaMax', newtonOpts.lambdaMax, ...
+                'lambdaGrow', newtonOpts.lambdaGrow, ...
+                'directConditionThreshold', newtonOpts.directConditionThreshold, ...
+                'lmConditionThreshold', newtonOpts.lmConditionThreshold);
+        end
+
+        function opts = normalizeNewtonOptions(obj,options,argName)
+            if nargin < 3 || isempty(argName)
+                argName = 'newtonOptions';
+            end
+
             opts = obj.defaultNewtonOptions();
-            opts = FMAM_ODE.mergeOptionStruct(opts,obj.newtonOptions,'newtonOptions');
-            opts = FMAM_ODE.mergeOptionStruct(opts,overrideOptions,'overrideOptions');
+            if nargin < 2 || isempty(options)
+                return
+            end
+
+            opts = FMAM_ODE.mergeOptionStruct( ...
+                opts,options,argName,'FMAM_ODE:UnknownNewtonOption');
+
+            validateattributes(opts.maxIterations, {'numeric'}, ...
+                {'scalar', 'integer', 'nonnegative'}, 'FMAM_ODE', [argName '.maxIterations']);
+            validateattributes(opts.incrementTolerance, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.incrementTolerance']);
+            validateattributes(opts.initialLambda, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.initialLambda']);
+            validateattributes(opts.lambdaMin, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.lambdaMin']);
+            validateattributes(opts.lambdaMax, {'numeric'}, ...
+                {'scalar', 'positive', '>=', opts.lambdaMin}, 'FMAM_ODE', [argName '.lambdaMax']);
+            validateattributes(opts.lambdaGrow, {'numeric'}, ...
+                {'scalar', '>', 1}, 'FMAM_ODE', [argName '.lambdaGrow']);
+            validateattributes(opts.lambdaShrink, {'numeric'}, ...
+                {'scalar', 'positive', '<=', 1}, 'FMAM_ODE', [argName '.lambdaShrink']);
+            validateattributes(opts.directConditionThreshold, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.directConditionThreshold']);
+            validateattributes(opts.lmConditionThreshold, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.lmConditionThreshold']);
+            validateattributes(opts.candidateBacktrackingFactor, {'numeric'}, ...
+                {'scalar', 'positive', '<', 1}, 'FMAM_ODE', [argName '.candidateBacktrackingFactor']);
+            validateattributes(opts.candidateBacktrackingMaxBacktracks, {'numeric'}, ...
+                {'scalar', 'integer', 'nonnegative'}, ...
+                'FMAM_ODE', [argName '.candidateBacktrackingMaxBacktracks']);
         end
 
         function ctx = buildNewtonAssemblyContext(obj)
@@ -659,10 +709,8 @@ classdef FMAM_ODE < handle
                     'continuationOptions must be a struct.')
             end
 
-            names = fieldnames(options);
-            for i = 1:numel(names)
-                opts.(names{i}) = options.(names{i});
-            end
+            opts = FMAM_ODE.mergeOptionStruct( ...
+                opts,options,'continuationOptions','FMAM_ODE:UnknownContinuationOption');
 
             validateattributes(opts.initialSteps, {'numeric'}, ...
                 {'scalar', 'integer', 'positive'}, 'FMAM_ODE', 'continuationOptions.initialSteps');
@@ -995,7 +1043,7 @@ classdef FMAM_ODE < handle
             rhs(rowIdx) = reshape([obj.targetPath.deltaValue],[],1);
 
             solveResult = solve_regularized_linear_system( ...
-                A,rhs,obj.effectiveNewtonOptions(struct()),'best_effort');
+                A,rhs,obj.linearSolverOptions(struct()),'best_effort');
             tangent.available = solveResult.success;
             tangent.vector = solveResult.solution;
             tangent.solver = solveResult.solver;
@@ -1579,15 +1627,23 @@ classdef FMAM_ODE < handle
     end
 
     methods (Static, Access = private)
-        function base = mergeOptionStruct(base,overrides,argName)
+        function base = mergeOptionStruct(base,overrides,argName,errorId)
             if nargin < 3
                 argName = 'options';
+            end
+            if nargin < 4 || isempty(errorId)
+                errorId = 'FMAM_ODE:UnknownOption';
             end
             if nargin < 2 || isempty(overrides)
                 return
             end
             if ~isstruct(overrides)
                 error('FMAM_ODE:InvalidNewtonOptions','%s must be a struct.',argName)
+            end
+
+            unknown = setdiff(fieldnames(overrides), fieldnames(base));
+            if ~isempty(unknown)
+                error(errorId, 'Unknown %s field(s): %s.', argName, strjoin(unknown, ', '));
             end
 
             names = fieldnames(overrides);

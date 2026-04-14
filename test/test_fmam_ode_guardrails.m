@@ -58,6 +58,18 @@ function testConstructorRejectsUnknownNameValueOption(testCase)
         'FMAM_ODE:InvalidConstructorOption');
 end
 
+function testConstructorRejectsUnknownContinuationOptionField(testCase)
+    verifyError(testCase, ...
+        @() make_guardrail_task('continuationOptions', struct('predictorMod', 'constant')), ...
+        'FMAM_ODE:UnknownContinuationOption');
+end
+
+function testConstructorRejectsUnknownNewtonOptionField(testCase)
+    verifyError(testCase, ...
+        @() make_guardrail_task('newtonOptions', struct('maxIteratoins', 1)), ...
+        'FMAM_ODE:UnknownNewtonOption');
+end
+
 function testRuntimeKnobsDoNotChangeFrozenTargetSnapshot(testCase)
     task = make_guardrail_task();
     frozenTargets = task.items_per_curr;
