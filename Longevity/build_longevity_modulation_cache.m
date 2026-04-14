@@ -70,9 +70,9 @@ targetState = state( ...
     baselineState.truncationOrder, baselineState.PV);
 targetState.updatePeriod();
 targetState.updateVar2();
-targetInput = targetState;
-    targetView = fmam_state_ops.solverViewFromState(targetState);
-    targetDerived = fmam_state_ops.derivedViewFromState(targetState);
+targetView = fmam_state_ops.solverViewFromState(targetState);
+targetDerived = fmam_state_ops.derivedViewFromState(targetState);
+targetInput = targetView;
 
 lambdaCap = 5e-3;
 minLambdaStep = 1e-6;

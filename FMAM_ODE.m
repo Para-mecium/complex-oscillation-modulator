@@ -77,7 +77,7 @@ classdef FMAM_ODE < handle
     end
 
     methods
-        function obj = FMAM_ODE(system,observables,stat,items_per,Coe_Controlled,maxstepsize,err,varargin)
+        function obj = FMAM_ODE(system,observables,initialSolverView,items_per,Coe_Controlled,maxstepsize,err,varargin)
             ctorOptions = FMAM_ODE.parseConstructorOptions(varargin{:});
             if iscell(system)
                 system = reshape(system,1,[]);
@@ -92,19 +92,11 @@ classdef FMAM_ODE < handle
             obj.dimVar = numel(system);
             obj.dimObs = numel(observables);
 
-            if isa(stat,'state')
-                candidateView = fmam_state_ops.solverViewFromState(stat);
-            elseif isstruct(stat)
-                candidateView = fmam_state_ops.normalizeSolverView(stat);
-            else
-                error('stat must be an instance of the class ''state'' or a canonical solverView struct.')
-            end
-
+            candidateView = obj.coerceSolverViewInput(initialSolverView);
             obj.truncationOrder = candidateView.truncationOrder;
             obj.dimParams = numel(candidateView.params);
-            obj.validateStateDimensions(stat,candidateView);
-            obj.solverView = fmam_state_ops.normalizeSolverView( ...
-                candidateView,obj.dimVar,obj.dimObs,obj.dimParams,obj.truncationOrder);
+            obj.validateStateDimensions(candidateView);
+            obj.solverView = obj.normalizeSolverView(candidateView);
 
             obj.n_per = numel(items_per);
             [items_per,Coe_Controlled,maxstepsize,err] = obj.validateModulationSetup(items_per,Coe_Controlled,maxstepsize,err);
@@ -177,8 +169,6 @@ classdef FMAM_ODE < handle
                     'no active target (all delta <= accuracy); skip continuation.');
                 return
             end
-
-            % obj.logTargetPathSummary(obj.targetPath);
 
             lambda = 0;
             acceptedState = obj.captureAcceptedContinuationState(lambda,0,struct(),struct());
@@ -378,17 +368,7 @@ classdef FMAM_ODE < handle
 
         function result = fit(obj)
             solveResult = obj.runNewtonSolve(struct());
-            result = struct();
-            result.converged = solveResult.converged;
-            result.iterations = solveResult.iterations;
-            result.finalError = solveResult.errorVec;
-            result.message = solveResult.message;
-            result.history = solveResult.history;
-            result.linearResidualNorm = solveResult.linearResidualNorm;
-            result.linearResidual = solveResult.linearResidual;
-            result.stepAccepted = solveResult.stepAccepted;
-            result.scalarError = solveResult.scalarError;
-            result.objective = solveResult.objective;
+            result = obj.translateNewtonResult(solveResult,'finalError');
         end
 
         function view = exportSolverView(obj)
@@ -404,10 +384,11 @@ classdef FMAM_ODE < handle
         end
 
         function val = res(obj)
+            runtimeContext = obj.currentRuntimeContext();
             system = obj.sys;
-            solverView = obj.solverView;
-            derived = obj.exportDerivedView();
-            targetCtx = obj.targetRuleContext(solverView,derived);
+            solverView = runtimeContext.solverView;
+            derived = runtimeContext.derived;
+            targetCtx = runtimeContext.targetCtx;
 
             p_var = solverView.p_var;
             q_var = solverView.q_var;
@@ -481,7 +462,8 @@ classdef FMAM_ODE < handle
         end
 
         function result = oneIter(obj)
-            result = obj.runNewtonSolve(struct('maxIterations',1));
+            result = obj.translateNewtonResult( ...
+                obj.runNewtonSolve(struct('maxIterations',1)),'errorVec');
         end    
 
     end
@@ -566,8 +548,8 @@ classdef FMAM_ODE < handle
         end
 
         function ctx = buildNewtonAssemblyContext(obj)
-            solverView = obj.solverView;
-            derived = obj.exportDerivedView();
+            runtimeContext = obj.currentRuntimeContext();
+            solverView = runtimeContext.solverView;
             ctx = struct();
             ctx.sys = obj.sys;
             ctx.obs = obj.obs;
@@ -596,7 +578,7 @@ classdef FMAM_ODE < handle
             ctx.isPsiUpdated = obj.isPsiUpdated;
             ctx.p_Psi_init = obj.p_Psi_init;
             ctx.q_Psi_init = obj.q_Psi_init;
-            ctx.targetRuleCtx = obj.targetRuleContext(solverView,derived);
+            ctx.targetRuleCtx = runtimeContext.targetCtx;
         end
 
         function snapshot = snapshotSolverView(obj)
@@ -625,16 +607,17 @@ classdef FMAM_ODE < handle
             end
         end
 
-        function assertCurrentTimeMapInvariant(obj)
-            if ~obj.checkPsiNonnegative
-                return
+        function runtimeContext = currentRuntimeContext(obj,solverView,derived)
+            if nargin < 2 || isempty(solverView)
+                solverView = obj.solverView;
             end
-            psiValues = obj.currentPsiValues();
-            issue = fmam_state_ops.timeMapInvariantIssue( ...
-                psiValues,obj.solverView.p_Psi,obj.solverView.q_Psi,fmam_state_defaults.LphiConst);
-            if ~issue.isValid
-                warning(issue.identifier,'%s',issue.message);
+            if nargin < 3 || isempty(derived)
+                derived = obj.buildDerivedView(solverView);
             end
+            runtimeContext = struct( ...
+                'solverView', solverView, ...
+                'derived', derived, ...
+                'targetCtx', obj.targetRuleContext(solverView,derived));
         end
 
         function psiValues = currentPsiValues(obj)
@@ -646,8 +629,13 @@ classdef FMAM_ODE < handle
             phi = (0:fmam_state_defaults.LphiConst-1)'*2*pi/fmam_state_defaults.LphiConst;
         end
 
-        function view = buildSolverViewFromState(obj,stat)
-            view = fmam_state_ops.solverViewFromState(stat);
+        function solverView = coerceSolverViewInput(~,solverViewInput)
+            if ~isstruct(solverViewInput)
+                error('FMAM_ODE:InvalidInitialSolverView', ...
+                    ['initialSolverView must be a canonical solverView struct. ' ...
+                    'Convert state objects with fmam_state_ops.solverViewFromState before constructing FMAM_ODE.'])
+            end
+            solverView = fmam_state_ops.normalizeSolverView(solverViewInput);
         end
 
         function normalized = normalizeSolverView(obj,view)
@@ -655,24 +643,11 @@ classdef FMAM_ODE < handle
                 view,obj.dimVar,obj.dimObs,obj.dimParams,obj.truncationOrder);
         end
 
-        function sizes = solverPropertySizesFromArrays(~,params,p_Psi,q_Psi,p_var,q_var,varPhiMax,varPhiMin,obsPhiMax,obsPhiMin)
-            sizes = fmam_state_ops.solverPropertySizesFromArrays( ...
-                params,p_Psi,q_Psi,p_var,q_var,varPhiMax,varPhiMin,obsPhiMax,obsPhiMin);
-        end
-
         function derived = buildDerivedView(obj,solverView)
             derived = fmam_state_ops.buildDerivedView( ...
                 obj.obs,solverView, ...
                 fmam_state_defaults.LphiConst,fmam_state_defaults.Lconst, ...
                 fmam_state_defaults.countMax,fmam_state_defaults.errMax);
-        end
-
-        function snapshot = buildDetachedStateSnapshot(obj)
-            snapshot = fmam_state_ops.buildStateSnapshotFromViews(obj.solverView,obj.exportDerivedView());
-        end
-
-        function [a,b] = primaryAmplitudeAndCenter(~,derived,PV)
-            [a,b] = fmam_state_ops.primaryAmplitudeAndCenter(derived,PV);
         end
 
         function opts = normalizeContinuationOptions(~,options)
@@ -749,10 +724,11 @@ classdef FMAM_ODE < handle
         end
 
         function path = buildContinuationPath(obj)
-            solverView = obj.solverView;
-            derived = obj.exportDerivedView();
-            targetCtx = obj.targetRuleContext(solverView,derived);
-            currentTargets = obj.initialTargetValues(solverView,derived,targetCtx);
+            runtimeContext = obj.currentRuntimeContext();
+            solverView = runtimeContext.solverView;
+            targetCtx = runtimeContext.targetCtx;
+            currentTargets = obj.initialTargetValues( ...
+                solverView,runtimeContext.derived,targetCtx);
             obj.targetCurr = currentTargets;
 
             if obj.n_per == 0
@@ -1286,21 +1262,12 @@ classdef FMAM_ODE < handle
             obj.q_Psi_init = obj.solverView.q_Psi;
         end
 
-        function validateStateDimensions(obj,stat,solverView)
+        function validateStateDimensions(obj,solverView)
             if ~iscell(obj.sys)
                 error('system must be a cell array of ODE right-hand-side functions.')
             end
             if ~isempty(obj.obs) && ~iscell(obj.obs)
                 error('observables must be provided as a cell array.')
-            end
-            if nargin < 3 || isempty(solverView)
-                if isa(stat,'state')
-                    solverView = fmam_state_ops.solverViewFromState(stat);
-                elseif isstruct(stat)
-                    solverView = fmam_state_ops.normalizeSolverView(stat);
-                else
-                    error('stat must be an instance of the class ''state'' or a canonical solverView struct.')
-                end
             end
             if obj.dimVar ~= solverView.dimSys
                 error('The dimension of system does not match solverView.dimSys.')
@@ -1350,10 +1317,11 @@ classdef FMAM_ODE < handle
         end
 
         function appendAcceptedLog(obj,acceptedPoint,fitResult)
-            currentView = obj.exportSolverView();
-            derived = obj.exportDerivedView();
+            runtimeContext = obj.currentRuntimeContext();
+            currentView = runtimeContext.solverView;
+            derived = runtimeContext.derived;
             log_curr = struct('params',currentView.params);
-            targetCtx = obj.targetRuleContext(currentView,derived);
+            targetCtx = runtimeContext.targetCtx;
 
             for i = 1:obj.n_per
                 item_per = obj.items_perturb(i);
@@ -1486,14 +1454,17 @@ classdef FMAM_ODE < handle
         end
 
         function targets = initialTargetValues(obj,solverView,derived,targetCtx)
-            if nargin < 2 || isempty(solverView)
-                solverView = obj.solverView;
+            if nargin < 2
+                solverView = [];
             end
-            if nargin < 3 || isempty(derived)
-                derived = obj.exportDerivedView();
+            if nargin < 3
+                derived = [];
             end
             if nargin < 4 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext(solverView,derived);
+                runtimeContext = obj.currentRuntimeContext(solverView,derived);
+                solverView = runtimeContext.solverView;
+                derived = runtimeContext.derived;
+                targetCtx = runtimeContext.targetCtx;
             end
             targets = zeros(1,obj.n_per);
 
@@ -1502,13 +1473,9 @@ classdef FMAM_ODE < handle
             end
         end
 
-        function idx = linearPropertyIndex(obj,propname,rawIdx)
-            idx = fmam_target_rules('linear_index',obj.targetRuleContext(),propname,rawIdx);
-        end
-
         function [needMax,needMin] = targetNeedsVariableExtrema(obj,varIdx,targetCtx)
             if nargin < 3 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext();
+                targetCtx = obj.currentRuntimeContext().targetCtx;
             end
             [needMax,needMin] = fmam_target_rules('needs_variable_extrema', ...
                 targetCtx,obj.items_perturb,varIdx);
@@ -1516,42 +1483,26 @@ classdef FMAM_ODE < handle
 
         function [needMax,needMin] = targetNeedsObservableExtrema(obj,obsIdx,targetCtx)
             if nargin < 3 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext();
+                targetCtx = obj.currentRuntimeContext().targetCtx;
             end
             [needMax,needMin] = fmam_target_rules('needs_observable_extrema', ...
                 targetCtx,obj.items_perturb,obsIdx);
         end
 
         function value = currentTargetValue(obj,item,solverView,derived,targetCtx)
-            if nargin < 3 || isempty(solverView)
-                solverView = obj.solverView;
+            if nargin < 3
+                solverView = [];
             end
-            if nargin < 4 || isempty(derived)
-                derived = obj.exportDerivedView();
+            if nargin < 4
+                derived = [];
             end
             if nargin < 5 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext(solverView,derived);
+                runtimeContext = obj.currentRuntimeContext(solverView,derived);
+                solverView = runtimeContext.solverView;
+                targetCtx = runtimeContext.targetCtx;
             end
             value = fmam_target_rules('current_value',targetCtx, ...
                 item,solverView);
-        end
-
-        function logTargetPathSummary(obj,path)
-            for i = 1:numel(path)
-                item = obj.items_perturb(i);
-                wrapText = 'none';
-                if path(i).isWrapped
-                    wrapText = sprintf('period=%.6g',path(i).wrapPeriod);
-                end
-
-                obj.logMessage('TARGET', ...
-                    ['#%d %s%s: start=%.6e, rawTarget=%.6e, final=%.6e, delta=%.6e, ' ...
-                    'wrap=%s, controlledParam=%d, maxStep=%.6e, accuracy=%.6e'], ...
-                    i, item.prop, mat2str(item.idx), ...
-                    path(i).startValue, path(i).rawTarget, path(i).finalValue, ...
-                    path(i).deltaValue, wrapText, obj.items_controlled(i), ...
-                    obj.maxstepsize(i), obj.accuracy(i));
-            end
         end
 
         function logNewtonSummary(obj,fitResult)
@@ -1611,6 +1562,20 @@ classdef FMAM_ODE < handle
             else
                 text = sprintf('%.6e',value);
             end
+        end
+
+        function result = translateNewtonResult(~,solveResult,errorFieldName)
+            result = struct();
+            result.converged = solveResult.converged;
+            result.iterations = solveResult.iterations;
+            result.(errorFieldName) = solveResult.errorVec;
+            result.message = solveResult.message;
+            result.history = solveResult.history;
+            result.linearResidualNorm = solveResult.linearResidualNorm;
+            result.linearResidual = solveResult.linearResidual;
+            result.stepAccepted = solveResult.stepAccepted;
+            result.scalarError = solveResult.scalarError;
+            result.objective = solveResult.objective;
         end
     end
 
@@ -1712,21 +1677,6 @@ classdef FMAM_ODE < handle
             end
         end
 
-        function entry = emptyNewtonHistoryEntry()
-            entry = struct( ...
-                'iteration', 0, ...
-                'objective', NaN, ...
-                'residualNorm', NaN, ...
-                'stepNorm', NaN, ...
-                'acceptedScale', 0, ...
-                'lambda', NaN, ...
-                'backtracks', 0, ...
-                'accepted', false, ...
-                'maxError', NaN, ...
-                'solver', '', ...
-                'conditionEstimate', NaN, ...
-                'directConditionEstimate', NaN);
-        end
     end
 
     methods (Access = private, Static)

@@ -24,6 +24,7 @@ derivatives = build_symbolic_derivatives(sys, obs, numel(params));
 PV.name = 'var';
 PV.idx = 1;
 State = state(obs,params,t,TS_var,M,PV);
+StateView = fmam_state_ops.solverViewFromState(State);
 
 period_init = State.period;
 obsAmp_init = State.obsAmp(1);
@@ -54,7 +55,7 @@ max_stepsize = max(abs([(period_target-State.period)/(2*pi) ...
 
 errBound = 1e-6;
 
-Modtask = FMAM_ODE(sys,obs,State,items_per,items_controlled,max_stepsize,errBound, ...
+Modtask = FMAM_ODE(sys,obs,StateView,items_per,items_controlled,max_stepsize,errBound, ...
     'derivatives', derivatives);
 Modtask.isPsiUpdated = true;
 Modtask.needLog = true;

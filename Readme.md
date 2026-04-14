@@ -8,7 +8,9 @@
 ```matlab
 derivatives = build_symbolic_derivatives(system, observables, numel(params));
 continuationOptions = struct('predictorMode', 'auto', 'initialLambdaStep', 0.1);
-task = FMAM_ODE(system, observables, stat, items_per, items_controlled, ...
+stat = state(observables, params, t, TS_var, M, PV);
+solverView = fmam_state_ops.solverViewFromState(stat);
+task = FMAM_ODE(system, observables, solverView, items_per, items_controlled, ...
     [], errBound, 'derivatives', derivatives, ...
     'continuationOptions', continuationOptions);
 ```
@@ -23,7 +25,7 @@ The derivative preparation step is now separated from the solver. `FMAM_ODE` exp
 
 **observables**: Functions that maps the state variables of ODE to the observables, specified as a $1\times n$ cell where $n$ is the number of observables. Each components of 'observables' are expected to be function handles.
 
-**stat**: A `state` instance that stores the current Fourier representation of the periodic orbit, together with derived quantities such as period, amplitudes, and extrema phases.
+**solverView**: Canonical solver-state struct storing the Fourier representation used by `FMAM_ODE`. If your workflow still starts from a `state` object, convert it with `fmam_state_ops.solverViewFromState(stat)` before constructing the task.
 
 **items_per**: Struct array of modulation targets. Each entry must contain `prop`, `idx`, and `target`, for example `struct('prop','varAmp','idx',1,'target',10)`.
 
@@ -47,3 +49,5 @@ The derivative preparation step is now separated from the solver. `FMAM_ODE` exp
 - `derivatives.obs2(i,j,k).function`: Second derivatives of observables with respect to state variables.
 
 Use `build_symbolic_derivatives` if you want to generate this cache from symbolic expressions before constructing `FMAM_ODE`.
+
+Legacy examples under `Normal form/` still use older solver entrypoints and are not the recommended API examples for the current `FMAM_ODE` constructor.

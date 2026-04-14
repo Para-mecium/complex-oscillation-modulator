@@ -97,16 +97,34 @@ function testStateFromSolverSnapshotMatchesCompatibilityAdapter(testCase)
     verifyEqual(testCase, rebuilt.period, compat.period, 'AbsTol', 1e-12);
 end
 
-function task = make_reference_task()
+function testConstructorRejectsLegacyStateInput(testCase)
     sys = make_harmonic_system();
     obs = {};
     derivatives = build_symbolic_derivatives(sys, obs, 1);
     PV = struct('name', 'var', 'idx', 1);
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
-    stat = state(obs, 1, t, x, 3, PV);
-    items_per = struct('prop', 'p_Psi', 'idx', 1, 'target', stat.p_Psi(1));
-    task = FMAM_ODE(sys, obs, stat, items_per, 1, 0.1, 1e-6, 'derivatives', derivatives);
+    legacyState = state(obs, 1, t, x, 3, PV);
+    items_per = struct('prop', 'p_Psi', 'idx', 1, 'target', legacyState.p_Psi(1));
+
+    verifyError(testCase, ...
+        @() FMAM_ODE(sys, obs, legacyState, items_per, 1, 0.1, 1e-6, 'derivatives', derivatives), ...
+        'FMAM_ODE:InvalidInitialSolverView');
+end
+
+function task = make_reference_task(initialInput)
+    sys = make_harmonic_system();
+    obs = {};
+    derivatives = build_symbolic_derivatives(sys, obs, 1);
+    if nargin < 1 || isempty(initialInput)
+        PV = struct('name', 'var', 'idx', 1);
+        t = linspace(0, 2 * pi, 1001).';
+        x = [cos(t), sin(t)];
+        initialInput = fmam_state_ops.solverViewFromState(state(obs, 1, t, x, 3, PV));
+    end
+
+    items_per = struct('prop', 'p_Psi', 'idx', 1, 'target', initialInput.p_Psi(1));
+    task = FMAM_ODE(sys, obs, initialInput, items_per, 1, 0.1, 1e-6, 'derivatives', derivatives);
 end
 
 function verify_solver_view(testCase, view, snapshot)

@@ -23,6 +23,7 @@ derivatives = build_symbolic_derivatives(sys, obs, numel(params));
 PV.name = 'var';
 PV.idx = 1;
 State = state(obs,params,t,TS_var,M,PV);
+StateView = fmam_state_ops.solverViewFromState(State);
 
 % Set modualtion target
 items_per = struct;
@@ -46,7 +47,7 @@ items_per(4).target = varAmp(3);
 items_controlled = [1 4 5 6];
 errBound = 1e-6;
 continuationOptions = struct('initialLambdaStep', 0.01, 'predictorMode', 'constant');
-Modtask = FMAM_ODE(sys,obs,State,items_per,items_controlled, [] ,errBound, ...
+Modtask = FMAM_ODE(sys,obs,StateView,items_per,items_controlled, [] ,errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
 % Modtask.fit()
 Modtask.isPsiUpdated = true;
