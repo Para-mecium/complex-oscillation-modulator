@@ -186,6 +186,11 @@ function opts = normalize_options(opts)
         if ~isstruct(opts)
             error('solve_regularized_linear_system:InvalidOptions', 'opts must be a struct.');
         end
+        unknown = setdiff(fieldnames(opts), fieldnames(defaults));
+        if ~isempty(unknown)
+            error('solve_regularized_linear_system:UnknownOption', ...
+                'Unknown opts field(s): %s.', strjoin(unknown, ', '));
+        end
         names = fieldnames(opts);
         for i = 1:numel(names)
             defaults.(names{i}) = opts.(names{i});

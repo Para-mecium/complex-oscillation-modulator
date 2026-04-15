@@ -88,6 +88,30 @@ function testOneIterMatchesAssemblyResidualForUpdatedPsiMode(testCase)
     verifyOneIterMatchesAssemblyResidual(testCase, task);
 end
 
+function testAssemblyFallbackTargetContextUsesTaskDiscretization(testCase)
+    sys = make_harmonic_system();
+    obs = {@observable_nonlinear_mix};
+    derivatives = build_symbolic_derivatives(sys, obs, 1);
+    PV = struct('name', 'obs', 'idx', 1);
+    [solverView, derived] = make_reference_views(obs, 1, 3, PV);
+    item = struct('prop', 'obsAmp', 'idx', 1, 'target', 0);
+    targetCtx = make_target_rule_context(solverView, derived, obs, numel(sys));
+    item.target = fmam_target_rules('current_value', targetCtx, item, make_target_value_struct(solverView));
+    reconstruction = struct('timeResampleCount', 4096, 'phaseSampleCount', 64);
+
+    task = FMAM_ODE(sys, obs, solverView, item, 1, 1e-3, 1e-6, ...
+        'derivatives', derivatives, 'reconstruction', reconstruction);
+    ctxWithTarget = make_assembly_context(task);
+    [AWith, resWith] = assemble_newton_linear_system(ctxWithTarget);
+
+    ctxFallback = ctxWithTarget;
+    ctxFallback.targetRuleCtx = [];
+    [AFallback, resFallback] = assemble_newton_linear_system(ctxFallback);
+
+    verifyEqual(testCase, AFallback, AWith, 'AbsTol', 1e-12);
+    verifyEqual(testCase, resFallback, resWith, 'AbsTol', 1e-12);
+end
+
 function verifyAssemblyMatchesSharedHelper(testCase, task)
     ctx = make_assembly_context(task);
 
@@ -257,13 +281,13 @@ function [solverView, derived] = make_reference_views(obs, omega, M, PV)
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
     [obs, omega, t, x] = canonicalize_trajectory_fixture(obs, omega, t, x, M, PV);
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, omega, t, x, M, PV, ...
-        state.Lconst, state.LphiConst, ...
-        state.countMax, state.errMax);
+        discretization, extremaSearch);
     derived = fmam_state_ops.buildDerivedView( ...
-        obs, solverView, state.LphiConst, state.Lconst, ...
-        state.countMax, state.errMax);
+        obs, solverView, discretization);
 end
 
 function [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, M, PV)
@@ -297,7 +321,8 @@ function ctx = make_assembly_context(task)
     ctx.sys = task.sys;
     ctx.obs = task.obs;
     ctx.derivatives = task.derivatives;
-    ctx.L = task.Lconst;
+    ctx.discretization = task.discretization;
+    ctx.extremaSearch = task.extremaSearch;
     ctx.dimVar = size(solverView.p_var, 2);
     ctx.dimObs = numel(task.obs);
     ctx.truncationOrder = size(solverView.q_var, 1);
@@ -381,10 +406,10 @@ end
 
 function fd = finite_difference_observable_gauge_column(ctx, editor)
     solverView = solver_view_from_context(ctx);
-    gauge0 = observable_primary_gauge(solverView, ctx.obs, ctx.PV, ctx.L);
+    gauge0 = observable_primary_gauge(solverView, ctx.obs, ctx.PV, ctx.discretization.assemblySampleCount);
     epsVal = 1e-7;
     solverViewPerturbed = editor(solverView, epsVal);
-    gauge1 = observable_primary_gauge(solverViewPerturbed, ctx.obs, ctx.PV, ctx.L);
+    gauge1 = observable_primary_gauge(solverViewPerturbed, ctx.obs, ctx.PV, ctx.discretization.assemblySampleCount);
     fd = (gauge1 - gauge0) / epsVal;
 end
 

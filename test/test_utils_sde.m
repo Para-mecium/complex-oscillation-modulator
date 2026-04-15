@@ -4,9 +4,12 @@ end
 
 function setup(testCase)
 fmamDir = fileparts(fileparts(mfilename('fullpath')));
-addpath(fmamDir);
+wasOnPath = has_path_entry(fmamDir);
+if ~wasOnPath
+    addpath(fmamDir);
+end
 testCase.TestData.fmamDir = fmamDir;
-testCase.TestData.cleanup = onCleanup(@() rmpath_safe(fmamDir));
+testCase.TestData.cleanup = onCleanup(@() restore_path_entry(fmamDir, wasOnPath));
 end
 
 function testGenerateOuPathAndBridgeAreReproducible(testCase)
@@ -56,8 +59,13 @@ verifyEqual(testCase, x1, x2, 'AbsTol', 1e-12);
 verifySize(testCase, x1, [1, 21]);
 end
 
-function rmpath_safe(pathValue)
-if contains(path, pathValue)
+function restore_path_entry(pathValue, wasOnPath)
+if ~wasOnPath && has_path_entry(pathValue)
     rmpath(pathValue);
 end
+end
+
+function tf = has_path_entry(pathValue)
+entries = strsplit(path, pathsep);
+tf = any(strcmp(entries, pathValue));
 end

@@ -1,5 +1,5 @@
 function tests = test_state_transaction_adapter
-%TEST_STATE_TRANSACTION_ADAPTER Contract tests for solverView export/load APIs.
+%TEST_STATE_TRANSACTION_ADAPTER Contract tests for solverView export/load and explicit state rebuild APIs.
 
     tests = functiontests(localfunctions);
 end
@@ -37,10 +37,10 @@ function testLoadPreservesMatrixBlockShapes(testCase)
     verify_solver_view(testCase, task.exportSolverView(), snapshot0);
 end
 
-function testCompatibilitySnapshotMatchesExportedResults(testCase)
+function testRebuildStateMatchesExportedResults(testCase)
     task = make_reference_task();
-    stat0 = task.stat;
-    stat1 = task.stat;
+    stat0 = task.rebuildState();
+    stat1 = task.rebuildState();
     derived = task.exportDerivedView();
     view = task.exportSolverView();
 
@@ -58,8 +58,8 @@ function testStateFromViewsMatchesCompatibilityAdapter(testCase)
     view = task.exportSolverView();
     derived = task.exportDerivedView();
 
-    rebuilt = state.fromViews(task.obs, view, derived);
-    compat = task.stat;
+    rebuilt = state.fromViews(task.obs, view, derived, task.discretization, task.extremaSearch);
+    compat = task.rebuildState();
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
     verifyEqual(testCase, rebuilt.p_Psi, compat.p_Psi, 'AbsTol', 1e-12);
@@ -74,8 +74,8 @@ function testStateFromSolverViewMatchesCompatibilityAdapter(testCase)
     task = make_reference_task();
     view = task.exportSolverView();
 
-    rebuilt = state.fromSolverView(task.obs, view);
-    compat = task.stat;
+    rebuilt = state.fromSolverView(task.obs, view, task.discretization, task.extremaSearch);
+    compat = task.rebuildState();
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
     verifyEqual(testCase, rebuilt.p_Psi, compat.p_Psi, 'AbsTol', 1e-12);
@@ -85,10 +85,11 @@ end
 
 function testStateFromSolverSnapshotMatchesCompatibilityAdapter(testCase)
     task = make_reference_task();
-    compat = task.stat;
-    snapshot = compat.snapshotSolverState();
+    compat = task.rebuildState();
+    snapshot = fmam_state_ops.buildStateSnapshotFromViews( ...
+        task.exportSolverView(), task.exportDerivedView());
 
-    rebuilt = state.fromSolverSnapshot(task.obs, snapshot);
+    rebuilt = state.fromSolverSnapshot(task.obs, snapshot, task.discretization, task.extremaSearch);
 
     verifyEqual(testCase, rebuilt.params, compat.params, 'AbsTol', 1e-12);
     verifyEqual(testCase, rebuilt.p_Psi, compat.p_Psi, 'AbsTol', 1e-12);
@@ -97,16 +98,34 @@ function testStateFromSolverSnapshotMatchesCompatibilityAdapter(testCase)
     verifyEqual(testCase, rebuilt.period, compat.period, 'AbsTol', 1e-12);
 end
 
-function task = make_reference_task()
+function testConstructorRejectsLegacyStateInput(testCase)
     sys = make_harmonic_system();
     obs = {};
     derivatives = build_symbolic_derivatives(sys, obs, 1);
     PV = struct('name', 'var', 'idx', 1);
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
-    stat = state(obs, 1, t, x, 3, PV);
-    items_per = struct('prop', 'p_Psi', 'idx', 1, 'target', stat.p_Psi(1));
-    task = FMAM_ODE(sys, obs, stat, items_per, 1, 0.1, 1e-6, 'derivatives', derivatives);
+    legacyState = state(obs, 1, t, x, 3, PV);
+    items_per = struct('prop', 'p_Psi', 'idx', 1, 'target', legacyState.p_Psi(1));
+
+    verifyError(testCase, ...
+        @() FMAM_ODE(sys, obs, legacyState, items_per, 1, 0.1, 1e-6, 'derivatives', derivatives), ...
+        'FMAM_ODE:InvalidInitialSolverView');
+end
+
+function task = make_reference_task(initialInput)
+    sys = make_harmonic_system();
+    obs = {};
+    derivatives = build_symbolic_derivatives(sys, obs, 1);
+    if nargin < 1 || isempty(initialInput)
+        PV = struct('name', 'var', 'idx', 1);
+        t = linspace(0, 2 * pi, 1001).';
+        x = [cos(t), sin(t)];
+        initialInput = fmam_state_ops.solverViewFromState(state(obs, 1, t, x, 3, PV));
+    end
+
+    items_per = struct('prop', 'p_Psi', 'idx', 1, 'target', initialInput.p_Psi(1));
+    task = FMAM_ODE(sys, obs, initialInput, items_per, 1, 0.1, 1e-6, 'derivatives', derivatives);
 end
 
 function verify_solver_view(testCase, view, snapshot)

@@ -41,6 +41,7 @@ if needGenerate
 
     PV = struct('name', 'var', 'idx', 1);
     State = state(obs, params, t, TS_var, M, PV);
+    StateView = fmam_state_ops.solverViewFromState(State);
 
     items_per = struct;
     items_per(1).prop = 'p_Psi';
@@ -66,7 +67,7 @@ if needGenerate
         'maxLambdaStep', lambdaStepCap,...
         'predictorMode', 'constant');
 
-    Modtask = FMAM_ODE(sys, obs, State, items_per, items_controlled, [], errBound, ...
+    Modtask = FMAM_ODE(sys, obs, StateView, items_per, items_controlled, [], errBound, ...
         'derivatives', derivatives, 'continuationOptions', continuationOptions);
     Modtask.isPsiUpdated = true;
     Modtask.needLog = true;

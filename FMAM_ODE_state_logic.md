@@ -186,14 +186,13 @@ Phase differences are computed in physical time by integrating `Psi` between ext
 
 These coefficients are not the main FMAM unknowns. They are an auxiliary time-domain Fourier description derived from the phase-domain solution.
 
-### 2.9 Snapshot/restore support
+### 2.9 Snapshot-based rebuild support
 
 `state` now provides:
 
-- `snapshotSolverState()`
-- `restoreSolverState(snapshot)`
+- `state.fromSolverSnapshot(obs, snapshot)`
 
-The snapshot includes the coefficient blocks and derived scalar/matrix properties needed for compatibility rebuilds. `FMAM_ODE` now keeps its runtime continuation state directly as `solverView` structs.
+The snapshot includes the coefficient blocks and derived scalar/matrix properties needed for compatibility rebuilds. `FMAM_ODE` now keeps its runtime continuation state directly as `solverView` structs, and rich `state` objects are rebuilt explicitly when needed.
 
 ## 3. Representation used by `FMAM_ODE.m`
 
@@ -210,7 +209,7 @@ The snapshot includes the coefficient blocks and derived scalar/matrix propertie
 
 - `sys`: cell array of ODE right-hand-side functions
 - `obs`: cell array of observable functions
-- `initialStateOrView`: canonically a `solverView` struct, with legacy `state` inputs still accepted and normalized immediately
+- `initialSolverView`: canonical `solverView` struct storing the runtime continuation state
 - `items_perturb`: list of quantities to modulate
 - `items_controlled`: indices of parameters allowed to move
 - `maxstepsize`: cap for each outer continuation step

@@ -1,11 +1,4 @@
 classdef state < handle
-    properties (Constant)
-        Lconst = 20000
-        LphiConst = 500
-        countMax = 20
-        errMax = 1e-2
-    end
-
     properties
         PV
         checkPsiNonnegative = true
@@ -13,6 +6,8 @@ classdef state < handle
 
     properties (Access = private)
         timeMapWarningSignature = ''
+        discretizationConfig = struct()
+        extremaSearchConfig = struct()
     end
 
     properties (SetAccess=private)
@@ -51,6 +46,8 @@ classdef state < handle
         dimParams
         truncationOrder
         Atrans
+        discretization
+        extremaSearch
 
         t
         phi
@@ -60,6 +57,8 @@ classdef state < handle
     end
     methods
         function obj = state(obs,Params,t,TS_var,M,PV)
+            obj.discretizationConfig = fmam_state_defaults.defaultDiscretization();
+            obj.extremaSearchConfig = fmam_state_ops.defaultExtremaSearchSettings();
             if nargin == 0
                 return
             end
@@ -74,8 +73,10 @@ classdef state < handle
             state.validateInputs(obs,Params,t,TS_var,M,PV);
 
             obj.obs = obs;
+            discretization = obj.discretization;
+            extremaSearch = obj.extremaSearch;
             solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
-                obs,Params,t,TS_var,M,PV,obj.Lconst,obj.LphiConst,obj.countMax,obj.errMax);
+                obs,Params,t,TS_var,M,PV,discretization,extremaSearch);
             obj.params = solverView.params;
             obj.p_Psi = solverView.p_Psi;
             obj.q_Psi = solverView.q_Psi;
@@ -89,64 +90,10 @@ classdef state < handle
             obj.refreshDerivedState();
         end
 
-        function snapshot = snapshotSolverState(obj)
-            fieldNames = state.solverStateFields();
-            snapshot = struct();
-            for i = 1:numel(fieldNames)
-                fieldName = fieldNames{i};
-                snapshot.(fieldName) = obj.(fieldName);
-            end
-        end
-
-        function restoreSolverState(obj,snapshot)
-            fieldNames = state.solverStateFields();
-            if ~isstruct(snapshot) || ~all(isfield(snapshot,fieldNames))
-                error('state:InvalidSnapshot', ...
-                    'snapshot must contain the full solver state.');
-            end
-
-            for i = 1:numel(fieldNames)
-                fieldName = fieldNames{i};
-                obj.(fieldName) = snapshot.(fieldName);
-            end
-        end
-
-        function applyUnknownIncrement(obj,meta,increments,scale)
-            if nargin < 4 || isempty(scale)
-                scale = 1;
-            end
-            if ~isstruct(meta) || ~isfield(meta,'unknowns') || ~isfield(meta,'indexMap')
-                error('state:InvalidMeta', ...
-                    'meta must contain unknowns and indexMap fields.');
-            end
-
-            scaledIncrement = scale * increments;
-            for i = 1:numel(meta.unknowns)
-                propname = meta.unknowns{i};
-                if ~isfield(meta.indexMap,propname)
-                    error('state:InvalidMeta', ...
-                        'indexMap is missing the unknown block ''%s''.', propname)
-                end
-                idxProp = meta.indexMap.(propname);
-                columns = size(idxProp,2);
-                propIncrement = reshape(scaledIncrement(idxProp(:)),[],columns);
-                obj.add(propname,'all',propIncrement);
-            end
-            obj.assertTimeMapInvariant();
-        end
-
-        function value = currentUnknownInfNorm(obj,unknowns)
-            value = 0;
-            for i = 1:numel(unknowns)
-                currentValue = obj.(unknowns{i});
-                if ~isempty(currentValue)
-                    value = max(value,norm(currentValue(:),inf));
-                end
-            end
-        end
-
         function assertTimeMapInvariant(obj)
-            issue = fmam_state_ops.timeMapInvariantIssue(obj.Psi,obj.p_Psi,obj.q_Psi,obj.LphiConst);
+            discretization = obj.discretization;
+            issue = fmam_state_ops.timeMapInvariantIssue( ...
+                obj.Psi,obj.p_Psi,obj.q_Psi,discretization.reconstruction.phaseSampleCount);
             obj.warnOnTimeMapIssue(issue);
         end
         
@@ -166,6 +113,42 @@ classdef state < handle
             prop = size(obj.q_var,1);
         end
 
+        function prop = get.discretization(obj)
+            if isempty(obj.discretizationConfig)
+                obj.discretizationConfig = fmam_state_defaults.defaultDiscretization();
+            end
+            prop = obj.discretizationConfig;
+        end
+
+        function set.discretization(obj,discretization)
+            current = obj.discretization;
+            merged = state.mergeDiscretizationConfig(current,discretization);
+            updated = fmam_state_defaults.normalizeDiscretization(merged);
+            if isequal(updated,current)
+                return
+            end
+            obj.discretizationConfig = updated;
+            obj.refreshStateConfigurationCaches();
+        end
+
+        function prop = get.extremaSearch(obj)
+            if isempty(obj.extremaSearchConfig)
+                obj.extremaSearchConfig = fmam_state_ops.defaultExtremaSearchSettings();
+            end
+            prop = obj.extremaSearchConfig;
+        end
+
+        function set.extremaSearch(obj,extremaSearch)
+            current = obj.extremaSearch;
+            merged = state.mergeExtremaSearchConfig(current,extremaSearch);
+            updated = fmam_state_ops.normalizeExtremaSearchSettings(merged);
+            if isequal(updated,current)
+                return
+            end
+            obj.extremaSearchConfig = updated;
+            obj.refreshStateConfigurationCaches();
+        end
+
         function prop = get.TS_var(obj)
             prop = fmam_state_ops.evaluateTrigSeries(obj.phi,obj.p_var,obj.q_var);
         end
@@ -179,12 +162,12 @@ classdef state < handle
         end
 
         function prop = get.phi(obj)
-            L = obj.LphiConst;
+            L = obj.discretization.reconstruction.phaseSampleCount;
             prop = (0:L-1)'*2*pi/L;
         end
 
         function prop = get.Atrans(obj)
-            L = obj.LphiConst;
+            L = obj.discretization.reconstruction.phaseSampleCount;
             prop = zeros(L,L+1);
             prop(1,1) = -3;prop(1,2) = 4;prop(1,3) = -1;
             for j = 2:L
@@ -195,16 +178,22 @@ classdef state < handle
         end
 
         function prop = get.t(obj)
-            issue = fmam_state_ops.timeMapInvariantIssue(obj.Psi,obj.p_Psi,obj.q_Psi,obj.LphiConst);
+            discretization = obj.discretization;
+            issue = fmam_state_ops.timeMapInvariantIssue( ...
+                obj.Psi,obj.p_Psi,obj.q_Psi,discretization.reconstruction.phaseSampleCount);
             obj.warnOnTimeMapIssue(issue);
-            dt = fmam_state_ops.timeIncrementsFromCoefficients(obj.p_Psi,obj.q_Psi,obj.LphiConst);
+            dt = fmam_state_ops.timeIncrementsFromCoefficients( ...
+                obj.p_Psi,obj.q_Psi,discretization.reconstruction.phaseSampleCount);
             prop = [0; cumsum(dt(1:end-1))];
         end
 
         function updateVar2(obj)
+            discretization = obj.discretization;
+            extremaSearch = obj.extremaSearch;
             derived = fmam_state_ops.buildVariableDerivedState( ...
                 obj.p_var,obj.q_var,obj.p_Psi,obj.q_Psi, ...
-                obj.LphiConst,obj.countMax,obj.errMax);
+                discretization.reconstruction.phaseSampleCount, ...
+                extremaSearch);
 
             obj.varPhiMax = derived.varPhiMax;
             obj.varPhiMin = derived.varPhiMin;
@@ -218,9 +207,10 @@ classdef state < handle
             if obj.dimObs == 0
                 return
             end
+            discretization = obj.discretization;
+            extremaSearch = obj.extremaSearch;
             derived = fmam_state_ops.buildObservableDerivedState( ...
-                obj.obs,obj.p_var,obj.q_var,obj.p_Psi,obj.q_Psi, ...
-                obj.LphiConst,obj.Lconst,obj.countMax,obj.errMax);
+                obj.obs,obj.p_var,obj.q_var,obj.p_Psi,obj.q_Psi,discretization,extremaSearch);
 
             obj.p_obs = derived.p_obs;
             obj.q_obs = derived.q_obs;
@@ -282,9 +272,11 @@ classdef state < handle
 
         function updatePV(obj,PV)
             state.validatePrimaryVariable(PV,obj.dimSys,size(obj.obs,2));
+            discretization = obj.discretization;
+            extremaSearch = obj.extremaSearch;
             solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
                 obj.obs,obj.params,obj.t,obj.TS_var,obj.truncationOrder,PV, ...
-                obj.Lconst,obj.LphiConst,obj.countMax,obj.errMax);
+                discretization,extremaSearch);
             obj.PV = solverView.PV;
             obj.params = solverView.params;
             obj.p_Psi = solverView.p_Psi;
@@ -299,13 +291,15 @@ classdef state < handle
         end
 
         function refreshDerivedState(obj)
+            discretization = obj.discretization;
+            extremaSearch = obj.extremaSearch;
             obj.assertTimeMapInvariant();
             varDerived = fmam_state_ops.buildVariableDerivedState( ...
                 obj.p_var,obj.q_var,obj.p_Psi,obj.q_Psi, ...
-                obj.LphiConst,obj.countMax,obj.errMax);
+                discretization.reconstruction.phaseSampleCount, ...
+                extremaSearch);
             obsDerived = fmam_state_ops.buildObservableDerivedState( ...
-                obj.obs,obj.p_var,obj.q_var,obj.p_Psi,obj.q_Psi, ...
-                obj.LphiConst,obj.Lconst,obj.countMax,obj.errMax);
+                obj.obs,obj.p_var,obj.q_var,obj.p_Psi,obj.q_Psi,discretization,extremaSearch);
 
             solverView = struct( ...
                 'params', obj.params, ...
@@ -319,7 +313,7 @@ classdef state < handle
                 'obsPhiMin', obsDerived.obsPhiMin, ...
                 'PV', obj.PV);
             derived = fmam_state_ops.buildDerivedView( ...
-                obj.obs,solverView,obj.LphiConst,obj.Lconst,obj.countMax,obj.errMax);
+                obj.obs,solverView,discretization);
 
             obj.varPhiMax = solverView.varPhiMax;
             obj.varPhiMin = solverView.varPhiMin;
@@ -342,14 +336,28 @@ classdef state < handle
         end
 
         function updateFCOrigin(obj)
+            discretization = obj.discretization;
             derived = fmam_state_ops.buildDerivedView( ...
-                obj.obs,obj.currentSolverView(),obj.LphiConst,obj.Lconst,obj.countMax,obj.errMax);
+                obj.obs,obj.currentSolverView(),discretization);
             obj.p_var_origin = derived.p_var_origin;
             obj.q_var_origin = derived.q_var_origin;
         end
     end
 
     methods (Access = private)
+        function loadSolverSnapshot(obj,snapshot)
+            fieldNames = state.solverStateFields();
+            if ~isstruct(snapshot) || ~all(isfield(snapshot,fieldNames))
+                error('state:InvalidSnapshot', ...
+                    'snapshot must contain the full solver state.');
+            end
+
+            for i = 1:numel(fieldNames)
+                fieldName = fieldNames{i};
+                obj.(fieldName) = snapshot.(fieldName);
+            end
+        end
+
         function warnOnTimeMapIssue(obj,issue)
             if ~obj.checkPsiNonnegative
                 obj.timeMapWarningSignature = '';
@@ -368,8 +376,10 @@ classdef state < handle
         end
 
         function refreshObservableFourierCoefficients(obj)
+            discretization = obj.discretization;
             [pObs,qObs] = fmam_state_ops.buildObservableFourierCoefficients( ...
-                obj.obs,obj.p_var,obj.q_var,obj.truncationOrder,obj.LphiConst);
+                obj.obs,obj.p_var,obj.q_var,obj.truncationOrder, ...
+                discretization.reconstruction.phaseSampleCount);
             obj.p_obs = pObs;
             obj.q_obs = qObs;
         end
@@ -387,16 +397,19 @@ classdef state < handle
                 'obsPhiMin', obj.obsPhiMin, ...
                 'PV', obj.PV);
         end
+
+        function refreshStateConfigurationCaches(obj)
+            if state.hasLoadedSolverState(obj)
+                obj.refreshDerivedState();
+            end
+        end
+
     end
 
     
     methods(Static)
         function TS_obs = getObs(obs,TS_var)
             TS_obs = fmam_state_ops.getObs(obs,TS_var);
-        end
-        function [phi_max,phi_min,amplitude,var_max,var_min] = FindExtreme(p,q,L)
-            [phi_max,phi_min,amplitude,var_max,var_min] = ...
-                fmam_state_ops.FindExtreme(p,q,L,state.countMax,state.errMax);
         end
 
         function output = Trintegration(p,q,phi_L,phi_U)
@@ -405,9 +418,10 @@ classdef state < handle
 
         function [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
             fourierCoeffs(M,t,TS_variable,TS_observable,PV)
+            discretization = fmam_state_defaults.defaultDiscretization();
             [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
                 fmam_state_ops.reconstructSolverCoefficients( ...
-                    TS_variable,TS_observable,t(:)-t(1),M,PV,state.Lconst,state.LphiConst);
+                    TS_variable,TS_observable,t(:)-t(1),M,PV,discretization);
         end
 
         function [p,q] = projectFourierSeries(TS,M)
@@ -472,7 +486,7 @@ classdef state < handle
 
         function dt = timeIncrementsFromCoefficients(p,q,numIntervals)
             if nargin < 3 || isempty(numIntervals)
-                numIntervals = state.LphiConst;
+                numIntervals = fmam_state_defaults.defaultDiscretization().reconstruction.phaseSampleCount;
             end
             dt = fmam_state_ops.timeIncrementsFromCoefficients(p,q,numIntervals);
         end
@@ -498,7 +512,7 @@ classdef state < handle
                 'varPhase','obsPhase'};
         end
 
-        function obj = fromSolverSnapshot(obs,snapshot)
+        function obj = fromSolverSnapshot(obs,snapshot,discretization,extremaSearch)
             if isempty(obs)
                 obs = {};
             elseif iscell(obs)
@@ -507,17 +521,31 @@ classdef state < handle
 
             obj = state();
             obj.obs = obs;
-            obj.restoreSolverState(snapshot);
+            if nargin < 3 || isempty(discretization)
+                discretization = fmam_state_defaults.defaultDiscretization();
+            end
+            if nargin < 4 || isempty(extremaSearch)
+                extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
+            end
+            obj.discretizationConfig = fmam_state_defaults.normalizeDiscretization(discretization);
+            obj.extremaSearchConfig = fmam_state_ops.normalizeExtremaSearchSettings(extremaSearch);
+            obj.loadSolverSnapshot(snapshot);
         end
 
-        function obj = fromSolverView(obs,solverView)
+        function obj = fromSolverView(obs,solverView,discretization,extremaSearch)
             solverView = fmam_state_ops.normalizeSolverView(solverView);
+            if nargin < 3 || isempty(discretization)
+                discretization = fmam_state_defaults.defaultDiscretization();
+            end
+            if nargin < 4 || isempty(extremaSearch)
+                extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
+            end
             derived = fmam_state_ops.buildDerivedView( ...
-                obs,solverView,state.LphiConst,state.Lconst,state.countMax,state.errMax);
-            obj = state.fromViews(obs,solverView,derived);
+                obs,solverView,discretization);
+            obj = state.fromViews(obs,solverView,derived,discretization,extremaSearch);
         end
 
-        function obj = fromViews(obs,solverView,derived)
+        function obj = fromViews(obs,solverView,derived,discretization,extremaSearch)
             if isempty(obs)
                 obs = {};
             elseif iscell(obs)
@@ -526,11 +554,68 @@ classdef state < handle
 
             solverView = fmam_state_ops.normalizeSolverView(solverView);
             snapshot = fmam_state_ops.buildStateSnapshotFromViews(solverView,derived);
-            obj = state.fromSolverSnapshot(obs,snapshot);
+            if nargin < 4 || isempty(discretization)
+                discretization = fmam_state_defaults.defaultDiscretization();
+            end
+            if nargin < 5 || isempty(extremaSearch)
+                extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
+            end
+            obj = state.fromSolverSnapshot(obs,snapshot,discretization,extremaSearch);
         end
 
         function [a,b] = primaryAmplitudeAndCenter(derived,PV)
             [a,b] = fmam_state_ops.primaryAmplitudeAndCenter(derived,PV);
+        end
+
+        function discretization = mergeDiscretizationConfig(current,update)
+            if nargin < 1 || isempty(current)
+                current = fmam_state_defaults.defaultDiscretization();
+            end
+            if nargin < 2 || isempty(update)
+                discretization = current;
+                return
+            end
+            if ~isstruct(update)
+                error('state:InvalidDiscretizationUpdate', ...
+                    'discretization updates must be provided as a struct.');
+            end
+
+            discretization = current;
+            fieldNames = fieldnames(update);
+            for i = 1:numel(fieldNames)
+                fieldName = fieldNames{i};
+                if strcmp(fieldName,'reconstruction')
+                    discretization.reconstruction = fmam_state_defaults.normalizeReconstruction( ...
+                        update.reconstruction, current.reconstruction);
+                else
+                    discretization.(fieldName) = update.(fieldName);
+                end
+            end
+        end
+
+        function extremaSearch = mergeExtremaSearchConfig(current,update)
+            if nargin < 1 || isempty(current)
+                current = fmam_state_ops.defaultExtremaSearchSettings();
+            end
+            if nargin < 2 || isempty(update)
+                extremaSearch = current;
+                return
+            end
+            if ~isstruct(update)
+                error('state:InvalidExtremaSearchUpdate', ...
+                    'extremaSearch updates must be provided as a struct.');
+            end
+
+            extremaSearch = current;
+            fieldNames = fieldnames(update);
+            for i = 1:numel(fieldNames)
+                extremaSearch.(fieldNames{i}) = update.(fieldNames{i});
+            end
+        end
+
+        function tf = hasLoadedSolverState(obj)
+            tf = ~isempty(obj.p_Psi) && ~isempty(obj.p_var) && ~isempty(obj.q_var) && ...
+                ~isempty(obj.params) && ~isempty(obj.PV);
         end
     end
 end

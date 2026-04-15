@@ -49,7 +49,6 @@ classdef FMAM_ODE < handle
 
     properties
         errBound = 1e-8;
-        Lconst = 500;
         needLog = false
         verbose = true
         checkPsiNonnegative = true
@@ -68,17 +67,24 @@ classdef FMAM_ODE < handle
         p_Psi_init = []
         q_Psi_init = []
         solverView = struct()
+        discretizationConfig = struct()
+        extremaSearchConfig = struct()
     end
 
     properties (Dependent)
-        stat
         isPsiUpdated
         items_per_curr
+        assemblySampleCount
+        reconstruction
+        discretization
+        extremaSearch
     end
 
     methods
-        function obj = FMAM_ODE(system,observables,stat,items_per,Coe_Controlled,maxstepsize,err,varargin)
+        function obj = FMAM_ODE(system,observables,initialSolverView,items_per,Coe_Controlled,maxstepsize,err,varargin)
             ctorOptions = FMAM_ODE.parseConstructorOptions(varargin{:});
+            obj.discretizationConfig = ctorOptions.discretization;
+            obj.extremaSearchConfig = ctorOptions.extremaSearch;
             if iscell(system)
                 system = reshape(system,1,[]);
             end
@@ -92,19 +98,11 @@ classdef FMAM_ODE < handle
             obj.dimVar = numel(system);
             obj.dimObs = numel(observables);
 
-            if isa(stat,'state')
-                candidateView = fmam_state_ops.solverViewFromState(stat);
-            elseif isstruct(stat)
-                candidateView = fmam_state_ops.normalizeSolverView(stat);
-            else
-                error('stat must be an instance of the class ''state'' or a canonical solverView struct.')
-            end
-
+            candidateView = obj.coerceSolverViewInput(initialSolverView);
             obj.truncationOrder = candidateView.truncationOrder;
             obj.dimParams = numel(candidateView.params);
-            obj.validateStateDimensions(stat,candidateView);
-            obj.solverView = fmam_state_ops.normalizeSolverView( ...
-                candidateView,obj.dimVar,obj.dimObs,obj.dimParams,obj.truncationOrder);
+            obj.validateStateDimensions(candidateView);
+            obj.solverView = obj.normalizeSolverView(candidateView);
 
             obj.n_per = numel(items_per);
             [items_per,Coe_Controlled,maxstepsize,err] = obj.validateModulationSetup(items_per,Coe_Controlled,maxstepsize,err);
@@ -114,24 +112,18 @@ classdef FMAM_ODE < handle
             obj.accuracy = err;
 
             obj.derivatives = ctorOptions.derivatives;
-            obj.newtonOptions = ctorOptions.newtonOptions;
+            obj.newtonOptions = obj.normalizeNewtonOptions(ctorOptions.newtonOptions, 'newtonOptions');
             obj.continuationOptions = ctorOptions.continuationOptions;
             obj.setPsiUpdateMode(ctorOptions.isPsiUpdated);
             obj.needLog = ctorOptions.needLog;
             obj.verbose = ctorOptions.verbose;
             obj.errBound = ctorOptions.errBound;
-            obj.Lconst = ctorOptions.Lconst;
             obj.checkPsiNonnegative = ctorOptions.checkPsiNonnegative;
 
             obj.continuationOptions = obj.normalizeContinuationOptions(obj.continuationOptions);
             obj.validateDerivativeCache();
 
             obj.targetCurr = obj.initialTargetValues();
-        end
-
-        function val = get.stat(obj)
-            val = state.fromViews(obj.obs,obj.solverView,obj.exportDerivedView());
-            val.checkPsiNonnegative = obj.checkPsiNonnegative;
         end
 
         function val = get.isPsiUpdated(obj)
@@ -146,12 +138,64 @@ classdef FMAM_ODE < handle
             val = obj.targetCurr;
         end
 
+        function val = get.assemblySampleCount(obj)
+            val = obj.discretization.assemblySampleCount;
+        end
+
+        function set.assemblySampleCount(obj,value)
+            validateattributes(value, {'numeric'}, ...
+                {'scalar', 'integer', 'positive', 'finite'}, ...
+                'FMAM_ODE', 'assemblySampleCount');
+            discretization = obj.discretization;
+            discretization.assemblySampleCount = double(value);
+            obj.discretizationConfig = discretization;
+        end
+
+        function val = get.reconstruction(obj)
+            val = obj.discretization.reconstruction;
+        end
+
+        function set.reconstruction(obj,value)
+            discretization = obj.discretization;
+            discretization.reconstruction = fmam_state_defaults.normalizeReconstruction( ...
+                value, discretization.reconstruction);
+            obj.discretizationConfig = discretization;
+        end
+
+        function val = get.discretization(obj)
+            if isempty(obj.discretizationConfig)
+                obj.discretizationConfig = fmam_state_defaults.defaultDiscretization();
+            end
+            val = obj.discretizationConfig;
+        end
+
+        function set.discretization(obj,value)
+            obj.discretizationConfig = fmam_state_defaults.normalizeDiscretization(value);
+        end
+
+        function val = get.extremaSearch(obj)
+            if isempty(obj.extremaSearchConfig)
+                obj.extremaSearchConfig = fmam_state_ops.defaultExtremaSearchSettings();
+            end
+            val = obj.extremaSearchConfig;
+        end
+
+        function set.extremaSearch(obj,value)
+            obj.extremaSearchConfig = fmam_state_ops.normalizeExtremaSearchSettings(value);
+        end
+
         function setPsiUpdateMode(obj,value)
             obj.applyPsiUpdateMode(value);
         end
 
         function perturb(obj)
             obj.targetCurr = obj.targetCurr + obj.stepsize;
+        end
+
+        function rebuilt = rebuildState(obj)
+            rebuilt = state.fromViews( ...
+                obj.obs,obj.solverView,obj.exportDerivedView(),obj.discretization,obj.extremaSearch);
+            rebuilt.checkPsiNonnegative = obj.checkPsiNonnegative;
         end
 
         function step(obj)
@@ -177,8 +221,6 @@ classdef FMAM_ODE < handle
                     'no active target (all delta <= accuracy); skip continuation.');
                 return
             end
-
-            % obj.logTargetPathSummary(obj.targetPath);
 
             lambda = 0;
             acceptedState = obj.captureAcceptedContinuationState(lambda,0,struct(),struct());
@@ -378,17 +420,7 @@ classdef FMAM_ODE < handle
 
         function result = fit(obj)
             solveResult = obj.runNewtonSolve(struct());
-            result = struct();
-            result.converged = solveResult.converged;
-            result.iterations = solveResult.iterations;
-            result.finalError = solveResult.errorVec;
-            result.message = solveResult.message;
-            result.history = solveResult.history;
-            result.linearResidualNorm = solveResult.linearResidualNorm;
-            result.linearResidual = solveResult.linearResidual;
-            result.stepAccepted = solveResult.stepAccepted;
-            result.scalarError = solveResult.scalarError;
-            result.objective = solveResult.objective;
+            result = obj.translateNewtonResult(solveResult,'finalError');
         end
 
         function view = exportSolverView(obj)
@@ -404,10 +436,11 @@ classdef FMAM_ODE < handle
         end
 
         function val = res(obj)
+            runtimeContext = obj.currentRuntimeContext();
             system = obj.sys;
-            solverView = obj.solverView;
-            derived = obj.exportDerivedView();
-            targetCtx = obj.targetRuleContext(solverView,derived);
+            solverView = runtimeContext.solverView;
+            derived = runtimeContext.derived;
+            targetCtx = runtimeContext.targetCtx;
 
             p_var = solverView.p_var;
             q_var = solverView.q_var;
@@ -415,7 +448,7 @@ classdef FMAM_ODE < handle
             q_Psi = solverView.q_Psi;
             parameters = solverView.params;
 
-            L = obj.Lconst;
+            L = obj.assemblySampleCount;
             N = obj.dimVar;
             % n = obj.dimObs;
             MVar = obj.truncationOrder;
@@ -481,7 +514,8 @@ classdef FMAM_ODE < handle
         end
 
         function result = oneIter(obj)
-            result = obj.runNewtonSolve(struct('maxIterations',1));
+            result = obj.translateNewtonResult( ...
+                obj.runNewtonSolve(struct('maxIterations',1)),'errorVec');
         end    
 
     end
@@ -560,20 +594,71 @@ classdef FMAM_ODE < handle
         end
 
         function opts = effectiveNewtonOptions(obj,overrideOptions)
+            opts = obj.normalizeNewtonOptions(obj.newtonOptions, 'newtonOptions');
+            opts = FMAM_ODE.mergeOptionStruct( ...
+                opts,overrideOptions,'overrideOptions','FMAM_ODE:UnknownNewtonOption');
+            opts = obj.normalizeNewtonOptions(opts, 'overrideOptions');
+        end
+
+        function opts = linearSolverOptions(obj,overrideOptions)
+            newtonOpts = obj.effectiveNewtonOptions(overrideOptions);
+            opts = struct( ...
+                'initialLambda', newtonOpts.initialLambda, ...
+                'lambdaMin', newtonOpts.lambdaMin, ...
+                'lambdaMax', newtonOpts.lambdaMax, ...
+                'lambdaGrow', newtonOpts.lambdaGrow, ...
+                'directConditionThreshold', newtonOpts.directConditionThreshold, ...
+                'lmConditionThreshold', newtonOpts.lmConditionThreshold);
+        end
+
+        function opts = normalizeNewtonOptions(obj,options,argName)
+            if nargin < 3 || isempty(argName)
+                argName = 'newtonOptions';
+            end
+
             opts = obj.defaultNewtonOptions();
-            opts = FMAM_ODE.mergeOptionStruct(opts,obj.newtonOptions,'newtonOptions');
-            opts = FMAM_ODE.mergeOptionStruct(opts,overrideOptions,'overrideOptions');
+            if nargin < 2 || isempty(options)
+                return
+            end
+
+            opts = FMAM_ODE.mergeOptionStruct( ...
+                opts,options,argName,'FMAM_ODE:UnknownNewtonOption');
+
+            validateattributes(opts.maxIterations, {'numeric'}, ...
+                {'scalar', 'integer', 'nonnegative'}, 'FMAM_ODE', [argName '.maxIterations']);
+            validateattributes(opts.incrementTolerance, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.incrementTolerance']);
+            validateattributes(opts.initialLambda, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.initialLambda']);
+            validateattributes(opts.lambdaMin, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.lambdaMin']);
+            validateattributes(opts.lambdaMax, {'numeric'}, ...
+                {'scalar', 'positive', '>=', opts.lambdaMin}, 'FMAM_ODE', [argName '.lambdaMax']);
+            validateattributes(opts.lambdaGrow, {'numeric'}, ...
+                {'scalar', '>', 1}, 'FMAM_ODE', [argName '.lambdaGrow']);
+            validateattributes(opts.lambdaShrink, {'numeric'}, ...
+                {'scalar', 'positive', '<=', 1}, 'FMAM_ODE', [argName '.lambdaShrink']);
+            validateattributes(opts.directConditionThreshold, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.directConditionThreshold']);
+            validateattributes(opts.lmConditionThreshold, {'numeric'}, ...
+                {'scalar', 'positive'}, 'FMAM_ODE', [argName '.lmConditionThreshold']);
+            validateattributes(opts.candidateBacktrackingFactor, {'numeric'}, ...
+                {'scalar', 'positive', '<', 1}, 'FMAM_ODE', [argName '.candidateBacktrackingFactor']);
+            validateattributes(opts.candidateBacktrackingMaxBacktracks, {'numeric'}, ...
+                {'scalar', 'integer', 'nonnegative'}, ...
+                'FMAM_ODE', [argName '.candidateBacktrackingMaxBacktracks']);
         end
 
         function ctx = buildNewtonAssemblyContext(obj)
-            solverView = obj.solverView;
-            derived = obj.exportDerivedView();
+            runtimeContext = obj.currentRuntimeContext();
+            solverView = runtimeContext.solverView;
             ctx = struct();
             ctx.sys = obj.sys;
             ctx.obs = obj.obs;
             ctx.derivatives = obj.derivatives;
 
-            ctx.L = obj.Lconst;
+            ctx.discretization = obj.discretization;
+            ctx.extremaSearch = obj.extremaSearch;
             ctx.dimVar = obj.dimVar;
             ctx.dimObs = obj.dimObs;
             ctx.truncationOrder = obj.truncationOrder;
@@ -596,7 +681,7 @@ classdef FMAM_ODE < handle
             ctx.isPsiUpdated = obj.isPsiUpdated;
             ctx.p_Psi_init = obj.p_Psi_init;
             ctx.q_Psi_init = obj.q_Psi_init;
-            ctx.targetRuleCtx = obj.targetRuleContext(solverView,derived);
+            ctx.targetRuleCtx = runtimeContext.targetCtx;
         end
 
         function snapshot = snapshotSolverView(obj)
@@ -625,16 +710,17 @@ classdef FMAM_ODE < handle
             end
         end
 
-        function assertCurrentTimeMapInvariant(obj)
-            if ~obj.checkPsiNonnegative
-                return
+        function runtimeContext = currentRuntimeContext(obj,solverView,derived)
+            if nargin < 2 || isempty(solverView)
+                solverView = obj.solverView;
             end
-            psiValues = obj.currentPsiValues();
-            issue = fmam_state_ops.timeMapInvariantIssue( ...
-                psiValues,obj.solverView.p_Psi,obj.solverView.q_Psi,fmam_state_defaults.LphiConst);
-            if ~issue.isValid
-                warning(issue.identifier,'%s',issue.message);
+            if nargin < 3 || isempty(derived)
+                derived = obj.buildDerivedView(solverView);
             end
+            runtimeContext = struct( ...
+                'solverView', solverView, ...
+                'derived', derived, ...
+                'targetCtx', obj.targetRuleContext(solverView,derived));
         end
 
         function psiValues = currentPsiValues(obj)
@@ -642,12 +728,18 @@ classdef FMAM_ODE < handle
                 obj.phaseGrid(),obj.solverView.p_Psi,obj.solverView.q_Psi);
         end
 
-        function phi = phaseGrid(~)
-            phi = (0:fmam_state_defaults.LphiConst-1)'*2*pi/fmam_state_defaults.LphiConst;
+        function phi = phaseGrid(obj)
+            phaseSampleCount = obj.discretization.reconstruction.phaseSampleCount;
+            phi = (0:phaseSampleCount-1)'*2*pi/phaseSampleCount;
         end
 
-        function view = buildSolverViewFromState(obj,stat)
-            view = fmam_state_ops.solverViewFromState(stat);
+        function solverView = coerceSolverViewInput(~,solverViewInput)
+            if ~isstruct(solverViewInput)
+                error('FMAM_ODE:InvalidInitialSolverView', ...
+                    ['initialSolverView must be a canonical solverView struct. ' ...
+                    'Convert state objects with fmam_state_ops.solverViewFromState before constructing FMAM_ODE.'])
+            end
+            solverView = fmam_state_ops.normalizeSolverView(solverViewInput);
         end
 
         function normalized = normalizeSolverView(obj,view)
@@ -655,24 +747,9 @@ classdef FMAM_ODE < handle
                 view,obj.dimVar,obj.dimObs,obj.dimParams,obj.truncationOrder);
         end
 
-        function sizes = solverPropertySizesFromArrays(~,params,p_Psi,q_Psi,p_var,q_var,varPhiMax,varPhiMin,obsPhiMax,obsPhiMin)
-            sizes = fmam_state_ops.solverPropertySizesFromArrays( ...
-                params,p_Psi,q_Psi,p_var,q_var,varPhiMax,varPhiMin,obsPhiMax,obsPhiMin);
-        end
-
         function derived = buildDerivedView(obj,solverView)
             derived = fmam_state_ops.buildDerivedView( ...
-                obj.obs,solverView, ...
-                fmam_state_defaults.LphiConst,fmam_state_defaults.Lconst, ...
-                fmam_state_defaults.countMax,fmam_state_defaults.errMax);
-        end
-
-        function snapshot = buildDetachedStateSnapshot(obj)
-            snapshot = fmam_state_ops.buildStateSnapshotFromViews(obj.solverView,obj.exportDerivedView());
-        end
-
-        function [a,b] = primaryAmplitudeAndCenter(~,derived,PV)
-            [a,b] = fmam_state_ops.primaryAmplitudeAndCenter(derived,PV);
+                obj.obs,solverView,obj.discretization);
         end
 
         function opts = normalizeContinuationOptions(~,options)
@@ -685,10 +762,8 @@ classdef FMAM_ODE < handle
                     'continuationOptions must be a struct.')
             end
 
-            names = fieldnames(options);
-            for i = 1:numel(names)
-                opts.(names{i}) = options.(names{i});
-            end
+            opts = FMAM_ODE.mergeOptionStruct( ...
+                opts,options,'continuationOptions','FMAM_ODE:UnknownContinuationOption');
 
             validateattributes(opts.initialSteps, {'numeric'}, ...
                 {'scalar', 'integer', 'positive'}, 'FMAM_ODE', 'continuationOptions.initialSteps');
@@ -749,10 +824,11 @@ classdef FMAM_ODE < handle
         end
 
         function path = buildContinuationPath(obj)
-            solverView = obj.solverView;
-            derived = obj.exportDerivedView();
-            targetCtx = obj.targetRuleContext(solverView,derived);
-            currentTargets = obj.initialTargetValues(solverView,derived,targetCtx);
+            runtimeContext = obj.currentRuntimeContext();
+            solverView = runtimeContext.solverView;
+            targetCtx = runtimeContext.targetCtx;
+            currentTargets = obj.initialTargetValues( ...
+                solverView,runtimeContext.derived,targetCtx);
             obj.targetCurr = currentTargets;
 
             if obj.n_per == 0
@@ -807,6 +883,8 @@ classdef FMAM_ODE < handle
                 'dimVar', obj.dimVar, ...
                 'dimObs', obj.dimObs, ...
                 'dimParams', obj.dimParams, ...
+                'discretization', obj.discretization, ...
+                'extremaSearch', obj.extremaSearch, ...
                 'propertySizes', solverView.propertySizes);
         end
 
@@ -1020,7 +1098,7 @@ classdef FMAM_ODE < handle
             rhs(rowIdx) = reshape([obj.targetPath.deltaValue],[],1);
 
             solveResult = solve_regularized_linear_system( ...
-                A,rhs,obj.effectiveNewtonOptions(struct()),'best_effort');
+                A,rhs,obj.linearSolverOptions(struct()),'best_effort');
             tangent.available = solveResult.success;
             tangent.vector = solveResult.solution;
             tangent.solver = solveResult.solver;
@@ -1286,21 +1364,12 @@ classdef FMAM_ODE < handle
             obj.q_Psi_init = obj.solverView.q_Psi;
         end
 
-        function validateStateDimensions(obj,stat,solverView)
+        function validateStateDimensions(obj,solverView)
             if ~iscell(obj.sys)
                 error('system must be a cell array of ODE right-hand-side functions.')
             end
             if ~isempty(obj.obs) && ~iscell(obj.obs)
                 error('observables must be provided as a cell array.')
-            end
-            if nargin < 3 || isempty(solverView)
-                if isa(stat,'state')
-                    solverView = fmam_state_ops.solverViewFromState(stat);
-                elseif isstruct(stat)
-                    solverView = fmam_state_ops.normalizeSolverView(stat);
-                else
-                    error('stat must be an instance of the class ''state'' or a canonical solverView struct.')
-                end
             end
             if obj.dimVar ~= solverView.dimSys
                 error('The dimension of system does not match solverView.dimSys.')
@@ -1350,10 +1419,11 @@ classdef FMAM_ODE < handle
         end
 
         function appendAcceptedLog(obj,acceptedPoint,fitResult)
-            currentView = obj.exportSolverView();
-            derived = obj.exportDerivedView();
+            runtimeContext = obj.currentRuntimeContext();
+            currentView = runtimeContext.solverView;
+            derived = runtimeContext.derived;
             log_curr = struct('params',currentView.params);
-            targetCtx = obj.targetRuleContext(currentView,derived);
+            targetCtx = runtimeContext.targetCtx;
 
             for i = 1:obj.n_per
                 item_per = obj.items_perturb(i);
@@ -1486,14 +1556,17 @@ classdef FMAM_ODE < handle
         end
 
         function targets = initialTargetValues(obj,solverView,derived,targetCtx)
-            if nargin < 2 || isempty(solverView)
-                solverView = obj.solverView;
+            if nargin < 2
+                solverView = [];
             end
-            if nargin < 3 || isempty(derived)
-                derived = obj.exportDerivedView();
+            if nargin < 3
+                derived = [];
             end
             if nargin < 4 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext(solverView,derived);
+                runtimeContext = obj.currentRuntimeContext(solverView,derived);
+                solverView = runtimeContext.solverView;
+                derived = runtimeContext.derived;
+                targetCtx = runtimeContext.targetCtx;
             end
             targets = zeros(1,obj.n_per);
 
@@ -1502,13 +1575,9 @@ classdef FMAM_ODE < handle
             end
         end
 
-        function idx = linearPropertyIndex(obj,propname,rawIdx)
-            idx = fmam_target_rules('linear_index',obj.targetRuleContext(),propname,rawIdx);
-        end
-
         function [needMax,needMin] = targetNeedsVariableExtrema(obj,varIdx,targetCtx)
             if nargin < 3 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext();
+                targetCtx = obj.currentRuntimeContext().targetCtx;
             end
             [needMax,needMin] = fmam_target_rules('needs_variable_extrema', ...
                 targetCtx,obj.items_perturb,varIdx);
@@ -1516,42 +1585,26 @@ classdef FMAM_ODE < handle
 
         function [needMax,needMin] = targetNeedsObservableExtrema(obj,obsIdx,targetCtx)
             if nargin < 3 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext();
+                targetCtx = obj.currentRuntimeContext().targetCtx;
             end
             [needMax,needMin] = fmam_target_rules('needs_observable_extrema', ...
                 targetCtx,obj.items_perturb,obsIdx);
         end
 
         function value = currentTargetValue(obj,item,solverView,derived,targetCtx)
-            if nargin < 3 || isempty(solverView)
-                solverView = obj.solverView;
+            if nargin < 3
+                solverView = [];
             end
-            if nargin < 4 || isempty(derived)
-                derived = obj.exportDerivedView();
+            if nargin < 4
+                derived = [];
             end
             if nargin < 5 || isempty(targetCtx)
-                targetCtx = obj.targetRuleContext(solverView,derived);
+                runtimeContext = obj.currentRuntimeContext(solverView,derived);
+                solverView = runtimeContext.solverView;
+                targetCtx = runtimeContext.targetCtx;
             end
             value = fmam_target_rules('current_value',targetCtx, ...
                 item,solverView);
-        end
-
-        function logTargetPathSummary(obj,path)
-            for i = 1:numel(path)
-                item = obj.items_perturb(i);
-                wrapText = 'none';
-                if path(i).isWrapped
-                    wrapText = sprintf('period=%.6g',path(i).wrapPeriod);
-                end
-
-                obj.logMessage('TARGET', ...
-                    ['#%d %s%s: start=%.6e, rawTarget=%.6e, final=%.6e, delta=%.6e, ' ...
-                    'wrap=%s, controlledParam=%d, maxStep=%.6e, accuracy=%.6e'], ...
-                    i, item.prop, mat2str(item.idx), ...
-                    path(i).startValue, path(i).rawTarget, path(i).finalValue, ...
-                    path(i).deltaValue, wrapText, obj.items_controlled(i), ...
-                    obj.maxstepsize(i), obj.accuracy(i));
-            end
         end
 
         function logNewtonSummary(obj,fitResult)
@@ -1612,18 +1665,40 @@ classdef FMAM_ODE < handle
                 text = sprintf('%.6e',value);
             end
         end
+
+        function result = translateNewtonResult(~,solveResult,errorFieldName)
+            result = struct();
+            result.converged = solveResult.converged;
+            result.iterations = solveResult.iterations;
+            result.(errorFieldName) = solveResult.errorVec;
+            result.message = solveResult.message;
+            result.history = solveResult.history;
+            result.linearResidualNorm = solveResult.linearResidualNorm;
+            result.linearResidual = solveResult.linearResidual;
+            result.stepAccepted = solveResult.stepAccepted;
+            result.scalarError = solveResult.scalarError;
+            result.objective = solveResult.objective;
+        end
     end
 
     methods (Static, Access = private)
-        function base = mergeOptionStruct(base,overrides,argName)
+        function base = mergeOptionStruct(base,overrides,argName,errorId)
             if nargin < 3
                 argName = 'options';
+            end
+            if nargin < 4 || isempty(errorId)
+                errorId = 'FMAM_ODE:UnknownOption';
             end
             if nargin < 2 || isempty(overrides)
                 return
             end
             if ~isstruct(overrides)
                 error('FMAM_ODE:InvalidNewtonOptions','%s must be a struct.',argName)
+            end
+
+            unknown = setdiff(fieldnames(overrides), fieldnames(base));
+            if ~isempty(unknown)
+                error(errorId, 'Unknown %s field(s): %s.', argName, strjoin(unknown, ', '));
             end
 
             names = fieldnames(overrides);
@@ -1712,21 +1787,6 @@ classdef FMAM_ODE < handle
             end
         end
 
-        function entry = emptyNewtonHistoryEntry()
-            entry = struct( ...
-                'iteration', 0, ...
-                'objective', NaN, ...
-                'residualNorm', NaN, ...
-                'stepNorm', NaN, ...
-                'acceptedScale', 0, ...
-                'lambda', NaN, ...
-                'backtracks', 0, ...
-                'accepted', false, ...
-                'maxError', NaN, ...
-                'solver', '', ...
-                'conditionEstimate', NaN, ...
-                'directConditionEstimate', NaN);
-        end
     end
 
     methods (Access = private, Static)
@@ -1736,6 +1796,8 @@ classdef FMAM_ODE < handle
                     'Constructor options must be supplied as name-value pairs.')
             end
 
+            defaultDiscretization = fmam_state_defaults.defaultDiscretization();
+            defaultExtremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
             opts = struct( ...
                 'derivatives', [], ...
                 'newtonOptions', struct(), ...
@@ -1745,7 +1807,10 @@ classdef FMAM_ODE < handle
                 'needLog', false, ...
                 'verbose', true, ...
                 'errBound', 1e-8, ...
-                'Lconst', 500);
+                'discretization', defaultDiscretization, ...
+                'extremaSearch', defaultExtremaSearch);
+            explicitAssemblySampleCount = [];
+            discretizationAssemblySampleCount = [];
 
             for k = 1:2:numel(varargin)
                 name = varargin{k};
@@ -1793,14 +1858,31 @@ classdef FMAM_ODE < handle
                         validateattributes(value, {'numeric'}, ...
                             {'scalar', 'positive', 'finite'}, 'FMAM_ODE', 'errBound');
                         opts.errBound = double(value);
-                    case 'lconst'
+                    case 'assemblysamplecount'
                         validateattributes(value, {'numeric'}, ...
-                            {'scalar', 'integer', 'positive', 'finite'}, 'FMAM_ODE', 'Lconst');
-                        opts.Lconst = double(value);
+                            {'scalar', 'integer', 'positive', 'finite'}, ...
+                            'FMAM_ODE', 'assemblySampleCount');
+                        explicitAssemblySampleCount = double(value);
+                        opts.discretization.assemblySampleCount = explicitAssemblySampleCount;
+                    case 'reconstruction'
+                        opts.discretization.reconstruction = fmam_state_defaults.normalizeReconstruction( ...
+                            value, opts.discretization.reconstruction);
+                    case 'discretization'
+                        opts.discretization = fmam_state_defaults.normalizeDiscretization(value);
+                        discretizationAssemblySampleCount = opts.discretization.assemblySampleCount;
+                    case 'extremasearch'
+                        opts.extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(value);
                     otherwise
                         error('FMAM_ODE:InvalidConstructorOption', ...
                             'Unsupported constructor option ''%s''.', name)
                 end
+            end
+
+            if ~isempty(explicitAssemblySampleCount) && ~isempty(discretizationAssemblySampleCount) && ...
+                    explicitAssemblySampleCount ~= discretizationAssemblySampleCount
+                error('FMAM_ODE:ConflictingAssemblySampleCount', ...
+                    ['Constructor options ''assemblySampleCount'' and ''discretization'' ', ...
+                     'must agree when both are provided.'])
             end
         end
     end

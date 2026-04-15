@@ -102,7 +102,7 @@ function attempt = attempt_direct_step(problem, baseSnapshot, J, r, meta, opts, 
     attempt.solver = 'direct';
     attempt.lambda = 0;
     attempt.nextLambda = clamp_lambda(opts.initialLambda, opts);
-    solveResult = solve_regularized_linear_system(J, r, opts, 'direct_only');
+    solveResult = solve_regularized_linear_system(J, r, linear_solver_options(opts), 'direct_only');
     attempt.conditionEstimate = solveResult.conditionEstimate;
     attempt.directConditionEstimate = solveResult.directConditionEstimate;
 
@@ -137,7 +137,7 @@ end
 function attempt = attempt_lm_step(problem, baseSnapshot, J, r, meta, lambdaSeed, opts, template)
     attempt = template;
     attempt.solver = 'lm';
-    lmOpts = opts;
+    lmOpts = linear_solver_options(opts);
     lmOpts.initialLambda = lambdaSeed;
     solveResult = solve_regularized_linear_system(J, r, lmOpts, 'lm_only');
     attempt.lambda = solveResult.lambda;
@@ -383,6 +383,16 @@ function message = compose_candidate_validation_message(message)
     message = sprintf('candidate validation failed: %s', message);
 end
 
+function opts = linear_solver_options(opts)
+    opts = struct( ...
+        'initialLambda', opts.initialLambda, ...
+        'lambdaMin', opts.lambdaMin, ...
+        'lambdaMax', opts.lambdaMax, ...
+        'lambdaGrow', opts.lambdaGrow, ...
+        'directConditionThreshold', opts.directConditionThreshold, ...
+        'lmConditionThreshold', opts.lmConditionThreshold);
+end
+
 function validate_problem(problem)
     requiredFields = {'linearize', 'snapshot', 'restore', 'applyIncrement', 'measure'};
     if ~isstruct(problem) || ~all(isfield(problem, requiredFields))
@@ -404,6 +414,11 @@ function opts = normalize_options(opts)
     else
         if ~isstruct(opts)
             error('solve_generic_newton:InvalidOptions', 'opts must be a struct.')
+        end
+        unknown = setdiff(fieldnames(opts), fieldnames(defaults));
+        if ~isempty(unknown)
+            error('solve_generic_newton:UnknownOption', ...
+                'Unknown opts field(s): %s.', strjoin(unknown, ', '));
         end
         names = fieldnames(opts);
         for i = 1:numel(names)

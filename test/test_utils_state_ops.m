@@ -6,11 +6,12 @@ end
 
 function testSeriesReconstructionMatchesStateProperties(testCase)
     stat = make_reference_state();
+    phaseSampleCount = stat.discretization.reconstruction.phaseSampleCount;
 
     TS_var = fmam_state_ops.evaluateTrigSeries(stat.phi, stat.p_var, stat.q_var);
     Psi = fmam_state_ops.evaluateTrigSeries(stat.phi, stat.p_Psi, stat.q_Psi);
     TS_obs = fmam_state_ops.getObs(stat.obs, TS_var);
-    dt = fmam_state_ops.timeIncrementsFromCoefficients(stat.p_Psi, stat.q_Psi, stat.LphiConst);
+    dt = fmam_state_ops.timeIncrementsFromCoefficients(stat.p_Psi, stat.q_Psi, phaseSampleCount);
     t = [0; cumsum(dt(1:end-1))];
 
     verifyEqual(testCase, TS_var, stat.TS_var, 'AbsTol', 1e-10);
@@ -21,13 +22,16 @@ end
 
 function testDerivedStateBuildersMatchStateStorage(testCase)
     stat = make_reference_state();
+    extremaSearch = stat.extremaSearch;
+    discretization = stat.discretization;
+    phaseSampleCount = discretization.reconstruction.phaseSampleCount;
 
     varDerived = fmam_state_ops.buildVariableDerivedState( ...
         stat.p_var, stat.q_var, stat.p_Psi, stat.q_Psi, ...
-        stat.LphiConst, state.countMax, state.errMax);
+        phaseSampleCount, extremaSearch);
     obsDerived = fmam_state_ops.buildObservableDerivedState( ...
         stat.obs, stat.p_var, stat.q_var, stat.p_Psi, stat.q_Psi, ...
-        stat.LphiConst, stat.Lconst, state.countMax, state.errMax);
+        discretization, extremaSearch);
     [pOrigin, qOrigin] = fmam_state_ops.reprojectEqualTimeFourier( ...
         stat.t / (stat.period / (2 * pi)), stat.TS_var, stat.truncationOrder);
 
@@ -57,8 +61,7 @@ function testSolverViewBuilderMatchesStateSolverStorage(testCase)
 
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs,[1 2],t,x,5,struct('name', 'var', 'idx', 1), ...
-        state.Lconst,state.LphiConst, ...
-        state.countMax,state.errMax);
+        stat.discretization, stat.extremaSearch);
 
     verifyEqual(testCase, solverView.params, stat.params, 'AbsTol', 1e-10);
     verifyEqual(testCase, solverView.p_Psi, stat.p_Psi, 'AbsTol', 1e-10);
@@ -88,8 +91,7 @@ function testDerivedViewBuilderMatchesStateStorage(testCase)
         'PV', stat.PV);
 
     derived = fmam_state_ops.buildDerivedView( ...
-        stat.obs,solverView,stat.LphiConst,stat.Lconst, ...
-        state.countMax,state.errMax);
+        stat.obs,solverView,stat.discretization);
 
     verifyEqual(testCase, derived.Psi, stat.Psi, 'AbsTol', 1e-10);
     verifyEqual(testCase, derived.t, stat.t, 'AbsTol', 1e-10);
@@ -127,9 +129,12 @@ end
 
 function testDerivedViewFromSnapshotReconstructsCanonicalSeries(testCase)
     stat = make_reference_state();
-    snapshot = stat.snapshotSolverState();
+    phaseSampleCount = stat.discretization.reconstruction.phaseSampleCount;
+    snapshot = fmam_state_ops.buildStateSnapshotFromViews( ...
+        fmam_state_ops.solverViewFromState(stat), ...
+        fmam_state_ops.derivedViewFromState(stat));
 
-    derived = fmam_state_ops.derivedViewFromSnapshot(snapshot, stat.LphiConst);
+    derived = fmam_state_ops.derivedViewFromSnapshot(snapshot, phaseSampleCount);
 
     verifyEqual(testCase, derived.Psi, stat.Psi, 'AbsTol', 1e-10);
     verifyEqual(testCase, derived.t, stat.t, 'AbsTol', 1e-10);
@@ -138,42 +143,28 @@ function testDerivedViewFromSnapshotReconstructsCanonicalSeries(testCase)
     verifyEqual(testCase, derived.period, stat.period, 'AbsTol', 1e-10);
 end
 
-function testUtilsStateOpsShimMatchesCanonicalHelpers(testCase)
-    stat = make_reference_state();
-
-    [phiMax0,phiMin0,amp0,varMax0,varMin0] = fmam_state_ops.FindExtreme( ...
-        stat.p_var(:,1),stat.q_var(:,1),stat.LphiConst, ...
-        state.countMax,state.errMax);
-    [phiMax1,phiMin1,amp1,varMax1,varMin1] = utils.state_ops.FindExtreme( ...
-        stat.p_var(:,1),stat.q_var(:,1),stat.LphiConst, ...
-        state.countMax,state.errMax);
-    verifyEqual(testCase,[phiMax1,phiMin1,amp1,varMax1,varMin1], ...
-        [phiMax0,phiMin0,amp0,varMax0,varMin0], 'AbsTol', 1e-12);
-
-    solverView0 = fmam_state_ops.buildSolverViewFromTrajectory( ...
-        stat.obs,stat.params,stat.t,stat.TS_var,stat.truncationOrder,stat.PV, ...
-        state.Lconst,state.LphiConst, ...
-        state.countMax,state.errMax);
-    solverView1 = utils.state_ops.buildSolverViewFromTrajectory( ...
-        stat.obs,stat.params,stat.t,stat.TS_var,stat.truncationOrder,stat.PV, ...
-        state.Lconst,state.LphiConst, ...
-        state.countMax,state.errMax);
-    verifyEqual(testCase, solverView1.params, solverView0.params, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.p_Psi, solverView0.p_Psi, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.q_Psi, solverView0.q_Psi, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.p_var, solverView0.p_var, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.q_var, solverView0.q_var, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.varPhiMax, solverView0.varPhiMax, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.varPhiMin, solverView0.varPhiMin, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.obsPhiMax, solverView0.obsPhiMax, 'AbsTol', 1e-12);
-    verifyEqual(testCase, solverView1.obsPhiMin, solverView0.obsPhiMin, 'AbsTol', 1e-12);
-end
-
 function testValidateTrajectoryInputsAcceptsCanonicalTrajectory(testCase)
     [obs,t,x] = reference_trajectory();
 
     verifyWarningFree(testCase, @() fmam_state_ops.validateTrajectoryInputs( ...
         obs, [1 2], t, x, 5, struct('name', 'var', 'idx', 1)));
+end
+
+function testHelpersAcceptUnifiedDiscretizationStruct(testCase)
+    stat = make_reference_state();
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
+    discretization.reconstruction.timeResampleCount = 4096;
+    discretization.reconstruction.phaseSampleCount = 64;
+
+    solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
+        stat.obs, stat.params, stat.t, stat.TS_var, stat.truncationOrder, stat.PV, ...
+        discretization, extremaSearch);
+    derived = fmam_state_ops.buildDerivedView(stat.obs, solverView, discretization);
+
+    verifyEqual(testCase, size(derived.TS_var, 1), discretization.reconstruction.phaseSampleCount);
+    verifyEqual(testCase, size(derived.TS_obs, 1), discretization.reconstruction.phaseSampleCount);
+    verifyEqual(testCase, solverView.PV, stat.PV);
 end
 
 function stat = make_reference_state()

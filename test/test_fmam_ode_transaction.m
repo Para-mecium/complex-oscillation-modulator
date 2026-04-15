@@ -4,6 +4,13 @@ function tests = test_fmam_ode_transaction
     tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+    testDir = fileparts(mfilename('fullpath'));
+    rootDir = fileparts(testDir);
+    addpath(rootDir);
+    testCase.TestData.rootDir = rootDir;
+end
+
 function testConstructorRequiresExternalDerivatives(testCase)
     sys = make_harmonic_system();
     obs = {};
@@ -29,6 +36,26 @@ function testFitReturnsStructuredResult(testCase)
     verifyTrue(testCase, isfield(result, 'linearResidualNorm'));
     verifyTrue(testCase, result.converged);
     verifyGreaterThanOrEqual(testCase, result.iterations, 0);
+end
+
+function testFitResultContractRemainsStable(testCase)
+    task = make_period_target_task(1e-3, 1e-6, 5);
+
+    result = task.fit();
+    expectedFields = {'converged', 'iterations', 'finalError', 'message', 'history', ...
+        'linearResidualNorm', 'linearResidual', 'stepAccepted', 'scalarError', 'objective'};
+
+    verifyEqual(testCase, sort(fieldnames(result)), sort(expectedFields(:)));
+    verifyClass(testCase, result.converged, 'logical');
+    verifyTrue(testCase, isscalar(result.iterations) && isnumeric(result.iterations));
+    verifyTrue(testCase, isrow(result.finalError));
+    verifyEqual(testCase, numel(result.finalError), numel(task.res()));
+    verifyTrue(testCase, ischar(result.message) || (isstring(result.message) && isscalar(result.message)));
+    verifyTrue(testCase, isscalar(result.linearResidualNorm) && isnumeric(result.linearResidualNorm));
+    verifyTrue(testCase, iscolumn(result.linearResidual) && isnumeric(result.linearResidual));
+    verifyTrue(testCase, isscalar(result.stepAccepted) && islogical(result.stepAccepted));
+    verifyTrue(testCase, isscalar(result.scalarError) && isnumeric(result.scalarError));
+    verifyTrue(testCase, isscalar(result.objective) && isnumeric(result.objective));
 end
 
 function testFitAndOneIterExposeGenericSolverDiagnostics(testCase)
@@ -61,7 +88,8 @@ function testOneIterBacktracksWhenPsiValidatorRejectsFullStep(testCase)
 
     result = task.oneIter();
     finalView = task.exportSolverView();
-    phi = (0:state.LphiConst-1)' * 2 * pi / state.LphiConst;
+    phaseSampleCount = fmam_state_defaults.defaultDiscretization().reconstruction.phaseSampleCount;
+    phi = (0:phaseSampleCount-1)' * 2 * pi / phaseSampleCount;
     psiMin = min(fmam_state_ops.evaluateTrigSeries(phi, finalView.p_Psi, finalView.q_Psi));
 
     verifyEqual(testCase, result.iterations, 1);
@@ -349,10 +377,11 @@ end
 function solverView = make_reference_solver_view(obs, params, M, PV)
     [t, x] = reference_trajectory();
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, M, PV);
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, M, PV, ...
-        state.Lconst, state.LphiConst, ...
-        state.countMax, state.errMax);
+        discretization, extremaSearch);
 end
 
 function [t, x] = reference_trajectory()

@@ -58,6 +58,18 @@ function testConstructorRejectsUnknownNameValueOption(testCase)
         'FMAM_ODE:InvalidConstructorOption');
 end
 
+function testConstructorRejectsUnknownContinuationOptionField(testCase)
+    verifyError(testCase, ...
+        @() make_guardrail_task('continuationOptions', struct('predictorMod', 'constant')), ...
+        'FMAM_ODE:UnknownContinuationOption');
+end
+
+function testConstructorRejectsUnknownNewtonOptionField(testCase)
+    verifyError(testCase, ...
+        @() make_guardrail_task('newtonOptions', struct('maxIteratoins', 1)), ...
+        'FMAM_ODE:UnknownNewtonOption');
+end
+
 function testRuntimeKnobsDoNotChangeFrozenTargetSnapshot(testCase)
     task = make_guardrail_task();
     frozenTargets = task.items_per_curr;
@@ -131,7 +143,7 @@ function testPsiNonnegativeCheckDefaultsOnAndCanBeConfigured(testCase)
 
     task.checkPsiNonnegative = false;
     verifyFalse(testCase, task.checkPsiNonnegative);
-    verifyFalse(testCase, task.stat.checkPsiNonnegative);
+    verifyFalse(testCase, task.rebuildState().checkPsiNonnegative);
 
     task.checkPsiNonnegative = true;
     verifyTrue(testCase, task.checkPsiNonnegative);
@@ -160,11 +172,8 @@ end
 
 function testStructuralPropertiesCannotBeReboundAfterConstruction(testCase)
     task = make_guardrail_task();
-    solverView = task.exportSolverView();
-    otherState = make_guardrail_state(task.obs, solverView.params);
 
     verifyPropertyWriteFails(testCase, @() assign_continuation_options(task));
-    verifyPropertyWriteFails(testCase, @() assign_state(task, otherState));
     verifyPropertyWriteFails(testCase, @() assign_items_perturb(task));
 end
 
@@ -252,13 +261,13 @@ function [solverView, derived] = make_guardrail_views(obs, params)
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, 3, PV);
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, 3, PV, ...
-        state.Lconst, state.LphiConst, ...
-        state.countMax, state.errMax);
+        discretization, extremaSearch);
     derived = fmam_state_ops.buildDerivedView( ...
-        obs, solverView, state.LphiConst, state.Lconst, ...
-        state.countMax, state.errMax);
+        obs, solverView, discretization);
 end
 
 function task = make_observable_pv_guardrail_task()
@@ -270,13 +279,13 @@ function task = make_observable_pv_guardrail_task()
     t = linspace(0, 2 * pi, 1001).';
     x = [cos(t), sin(t)];
     [obs, params, t, x] = canonicalize_trajectory_fixture(obs, params, t, x, 3, PV);
+    discretization = fmam_state_defaults.defaultDiscretization();
+    extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
     solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
         obs, params, t, x, 3, PV, ...
-        state.Lconst, state.LphiConst, ...
-        state.countMax, state.errMax);
+        discretization, extremaSearch);
     derived = fmam_state_ops.buildDerivedView( ...
-        obs, solverView, state.LphiConst, state.Lconst, ...
-        state.countMax, state.errMax);
+        obs, solverView, discretization);
     item = struct('prop', 'obsAmp', 'idx', 1, 'target', derived.obsAmp(1));
 
     task = FMAM_ODE(sys, obs, solverView, item, 1, 0.25, 1e-6, ...
@@ -343,10 +352,6 @@ end
 
 function assign_continuation_options(task)
     task.continuationOptions = struct('predictorMode', 'constant');
-end
-
-function assign_state(task, otherState)
-    task.stat = otherState;
 end
 
 function mutate_solver_view(task, editor)
