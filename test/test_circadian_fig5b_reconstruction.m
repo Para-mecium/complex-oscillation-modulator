@@ -18,11 +18,11 @@ RUN_MODULATION_TASK_LOG = {};
 
 stubDir = tempname;
 mkdir(stubDir);
-write_run_modulation_task_stub(stubDir);
+write_run_circadian_fmam_task_stub(stubDir);
 
 circadian.ensure_paths();
 addpath(stubDir, '-begin');
-clear run_modulation_task
+clear run_circadian_fmam_task
 
 testCase.TestData.stubDir = stubDir;
 testCase.TestData.cleanupPath = onCleanup(@() cleanup_stub_dir(stubDir));
@@ -178,7 +178,7 @@ end
 function cleanup_stub_dir(stubDir)
 if isfolder(stubDir)
     rmpath(stubDir);
-    clear run_modulation_task
+    clear run_circadian_fmam_task
     try
         rmdir(stubDir, 's');
     catch
@@ -186,14 +186,14 @@ if isfolder(stubDir)
 end
 end
 
-function write_run_modulation_task_stub(stubDir)
-stubPath = fullfile(stubDir, 'run_modulation_task.m');
+function write_run_circadian_fmam_task_stub(stubDir)
+stubPath = fullfile(stubDir, 'run_circadian_fmam_task.m');
 fid = fopen(stubPath, 'w');
-assert(fid >= 0, 'Failed to create run_modulation_task stub.');
+assert(fid >= 0, 'Failed to create run_circadian_fmam_task stub.');
 cleanup = onCleanup(@() fclose(fid)); %#ok<NASGU>
 
 lines = { ...
-    'function result = run_modulation_task(cfg)', ...
+    'function result = run_circadian_fmam_task(cfg)', ...
     'global RUN_MODULATION_TASK_LOG', ...
     'if isempty(RUN_MODULATION_TASK_LOG), RUN_MODULATION_TASK_LOG = {}; end', ...
     'startParams = resolve_start_params(cfg);', ...

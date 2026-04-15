@@ -1,4 +1,10 @@
-function result = run_fmam_task(cfg)
+function result = run_circadian_fmam_task(cfg)
+if nargin < 1
+    cfg = struct();
+end
+
+circadian.ensure_paths();
+cfg = circadian.merge_config(default_config(), cfg);
 model = circadian.build_model(cfg);
 
 if isfield(cfg, 'initialSolverView') && ~isempty(cfg.initialSolverView)

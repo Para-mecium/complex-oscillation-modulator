@@ -1,4 +1,10 @@
-function result = run_fmam_task(cfg)
+function result = run_flexmod_fmam_task(cfg)
+if nargin < 1
+    cfg = struct();
+end
+
+flexmod.ensure_paths();
+cfg = flexmod.merge_config(default_config(), cfg);
 model = flexmod.build_model(cfg);
 
 if isfield(cfg, 'initialSolverView') && ~isempty(cfg.initialSolverView)

@@ -18,9 +18,9 @@ addpath(sdeDir);
 
 stubDir = tempname;
 mkdir(stubDir);
-write_run_modulation_task_stub(stubDir);
+write_run_circadian_fmam_task_stub(stubDir);
 addpath(stubDir, '-begin');
-clear run_modulation_task
+clear run_circadian_fmam_task
 
 testCase.TestData.stubDir = stubDir;
 testCase.TestData.sdeDir = sdeDir;
@@ -281,7 +281,7 @@ end
 function cleanup_paths(stubDir, sdeDir)
 if isfolder(stubDir)
     rmpath(stubDir);
-    clear run_modulation_task
+    clear run_circadian_fmam_task
     try
         rmdir(stubDir, 's');
     catch
@@ -293,14 +293,14 @@ if isfolder(sdeDir)
 end
 end
 
-function write_run_modulation_task_stub(stubDir)
-stubPath = fullfile(stubDir, 'run_modulation_task.m');
+function write_run_circadian_fmam_task_stub(stubDir)
+stubPath = fullfile(stubDir, 'run_circadian_fmam_task.m');
 fid = fopen(stubPath, 'w');
-assert(fid >= 0, 'Failed to create run_modulation_task stub.');
+assert(fid >= 0, 'Failed to create run_circadian_fmam_task stub.');
 cleanup = onCleanup(@() fclose(fid));
 
 lines = { ...
-    'function result = run_modulation_task(cfg)', ...
+    'function result = run_circadian_fmam_task(cfg)', ...
     'goalOrder = cfg.goalOrder;', ...
     'if isequal(goalOrder, {''maximum'', ''Kd''})', ...
     '    result = make_maximum_kd_branch(cfg);', ...
