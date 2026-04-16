@@ -52,6 +52,16 @@ catch ME
 end
 assert(didThrow, 'Expected a MissingMatcontOdefile error when matcont_odefile is omitted for a plain RHS.');
 
+badNcolOpts = wrappedOpts;
+badNcolOpts.matcont_ncol = 8;
+didThrow = false;
+try
+    orbitmatcont.extract_periodic_orbit(rhs, [0.3; 0.5; -0.1], [1; 0.8], badNcolOpts);
+catch ME
+    didThrow = strcmp(ME.identifier, 'orbitmatcont:InvalidNcol');
+end
+assert(didThrow, 'Expected an InvalidNcol error when ncol falls outside the MATCONT-supported range.');
+
 strictOpts = wrappedOpts;
 strictOpts.matcont_parameter_tolerance = 1e-6;
 strictResult = orbitmatcont.extract_periodic_orbit(rhs, [0.3; 0.5; -0.1], [1; 0.8], strictOpts);

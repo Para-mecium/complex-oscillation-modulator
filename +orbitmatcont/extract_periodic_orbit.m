@@ -30,7 +30,8 @@ result.diagnostics = struct( ...
     'targetActiveParameter', result.input_active_parameter_value, ...
     'targetUserfunctionLabel', string(targetUserfunction.userInfo.label), ...
     'returnScanDirections', strings(0, 1), ...
-    'returnScanColumns', zeros(0, 1));
+    'returnScanColumns', zeros(0, 1), ...
+    'returnScanHitBudget', false(0, 1));
 
 ensure_matcont_paths(opts.matcont_root);
 
@@ -90,6 +91,7 @@ result.seed_corrected_parameter_value = get_active_parameter_value(correctedColu
 returnInfo = return_to_input_parameter(correctedColumn, correctedTangent, opts, targetUserfunction.userInfo);
 result.diagnostics.returnScanDirections = string(returnInfo.scanDirections(:));
 result.diagnostics.returnScanColumns = reshape(double(returnInfo.scanColumns), [], 1);
+result.diagnostics.returnScanHitBudget = reshape(logical(returnInfo.scanHitBudget), [], 1);
 result.raw.parameter_return = returnInfo.raw;
 
 result.output_parameter_values = reshape(extract_parameter_values(returnInfo.correctedColumn, lds), 1, []);
@@ -229,6 +231,11 @@ end
 if ~(isscalar(opts.matcont_ncol) && isnumeric(opts.matcont_ncol) && isfinite(opts.matcont_ncol) && opts.matcont_ncol >= 2)
     error('orbitmatcont:InvalidNcol', ...
         'opts.matcont_ncol must be a finite integer >= 2.');
+end
+
+if abs(opts.matcont_ncol - round(opts.matcont_ncol)) >= eps || opts.matcont_ncol > 7
+    error('orbitmatcont:InvalidNcol', ...
+        'opts.matcont_ncol must be an integer in the MATCONT-supported range 2 <= ncol <= 7.');
 end
 
 if ~(isscalar(opts.matcont_tolerance) && isnumeric(opts.matcont_tolerance) && isfinite(opts.matcont_tolerance) && opts.matcont_tolerance > 0)
@@ -379,7 +386,7 @@ end
 function opt = build_continuation_options(userOptions, overrides)
 opt = contset;
 opt = contset(opt, 'Singularities', 0);
-opt = contset(opt, 'Adapt', 1);
+opt = contset(opt, 'Adapt', 5);
 opt = apply_contset_struct(opt, userOptions);
 if nargin >= 2 && ~isempty(overrides)
     overrideNames = fieldnames(overrides);
@@ -470,6 +477,7 @@ returnInfo = struct( ...
     'parameterStatus', "", ...
     'scanDirections', {cell(0, 1)}, ...
     'scanColumns', zeros(0, 1), ...
+    'scanHitBudget', false(0, 1), ...
     'raw', struct('targetValue', targetValue, 'forward', [], 'backward', []));
 
 if abs(correctedValue - targetValue) <= tolerance
@@ -494,7 +502,18 @@ for i = 1:numel(directions)
 
     paramValues = extract_active_parameter_series(xScan, lds);
     returnInfo.scanColumns(end + 1, 1) = size(xScan, 2); %#ok<AGROW>
-    returnInfo.raw.(direction) = struct('status', "scan_success", 'values', paramValues, 'x', xScan, 'v', vScan, 's', sScan);
+    hitBudget = scan_hit_max_points(xScan, opts.matcont_return_max_points);
+    returnInfo.scanHitBudget(end + 1, 1) = hitBudget; %#ok<AGROW>
+    returnInfo.raw.(direction) = struct( ...
+        'status', "scan_success", ...
+        'values', paramValues, ...
+        'x', xScan, ...
+        'v', vScan, ...
+        's', sScan, ...
+        'hitMaxPoints', hitBudget);
+    if hitBudget
+        report_target_scan_budget(direction, opts.matcont_return_max_points, paramValues, targetValue);
+    end
 
     [locatedColumn, locatedIndex] = locate_userfunction_target(xScan, sScan, targetUserInfo, targetValue, lds, tolerance);
     if ~isempty(locatedColumn)
@@ -521,6 +540,18 @@ opt = build_target_continuation_options(opts.matcont_options, targetUserInfo, op
     'MaxNumPoints', round(opts.matcont_return_max_points), ...
     'Backward', double(isBackward)));
 [xScan, vScan, sScan] = cont(@limitcycle, x0, v0, opt);
+end
+
+function hitBudget = scan_hit_max_points(xColumns, maxPoints)
+hitBudget = size(xColumns, 2) >= round(maxPoints);
+end
+
+function report_target_scan_budget(direction, maxPoints, paramValues, targetValue)
+paramMin = min(paramValues);
+paramMax = max(paramValues);
+fprintf(['[orbitmatcont] Target continuation (%s) reached MaxNumPoints=%d ', ...
+    'before exiting the scan; active-parameter range [%0.16g, %0.16g], target=%0.16g.\n'], ...
+    direction, round(maxPoints), paramMin, paramMax, targetValue);
 end
 
 function values = extract_active_parameter_series(xColumns, lds)
