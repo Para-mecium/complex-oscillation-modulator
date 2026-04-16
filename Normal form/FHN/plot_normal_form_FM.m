@@ -23,6 +23,9 @@ hold on
 % plot(0.7489,-2.3888,'ro')
 % hold on
 % plot(3.74401258201093,-11.8756163259653,'ro')
+
+load('sol_para_FM.mat')
+
 plot(sol_para_FM(:,5),sol_para_FM(:,6)) %f11 f12
 
 figure()
