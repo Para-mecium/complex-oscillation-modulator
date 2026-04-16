@@ -1,9 +1,5 @@
-function result = extract_periodic_orbit(odefun, y0, parameter, opts)
-%EXTRACT_PERIODIC_ORBIT Refine a periodic orbit via MATCONT from time integration.
-%
-% This interface is intentionally independent from PO_extract/extract_periodic_orbit.
-% It preserves the four-argument call shape, but its option contract is
-% MATCONT-specific and narrower than the direct backend.
+function result = solve_periodic_orbit_matcont(odefun, y0, parameter, opts)
+%SOLVE_PERIODIC_ORBIT_MATCONT Refine a periodic orbit via MATCONT.
 
 if nargin < 4 || isempty(opts)
     opts = struct();
@@ -13,7 +9,7 @@ opts = normalize_options(opts);
 [solverHandle, solverName, y0, opts, matcontOdefile, matcontParams, rhs] = ...
     validate_inputs(odefun, y0, parameter, opts);
 
-result = initialize_result(y0);
+result = po_initialize_result(y0, "matcont");
 result.backend_used = "matcont_orbit";
 result = initialize_parameter_tracking(result, matcontParams, opts);
 targetUserfunction = build_target_userfunction_odefile(matcontOdefile, opts.matcont_active_parameter, result.input_active_parameter_value);
@@ -29,14 +25,15 @@ result.diagnostics = struct( ...
     'matcontStatus', "", ...
     'targetActiveParameter', result.input_active_parameter_value, ...
     'targetUserfunctionLabel', string(targetUserfunction.userInfo.label), ...
+    'seedSource', "", ...
+    'seedCycleCount', NaN, ...
+    'seedInitializedParameterValue', NaN, ...
     'returnScanDirections', strings(0, 1), ...
     'returnScanColumns', zeros(0, 1), ...
     'returnScanHitBudget', false(0, 1));
 
 ensure_matcont_paths(opts.matcont_root);
-
 [tPilot, yPilot] = solverHandle(rhs, opts.tspan, y0, opts.odeOptions);
-
 result.raw.pilot = struct('t', tPilot, 'y', yPilot);
 
 [tTail, yTail, tTransient] = extract_tail_segment(tPilot, yPilot, opts);
@@ -54,6 +51,8 @@ else
         'Could not estimate a positive period from the pilot trajectory tail.');
 end
 result.diagnostics.cycleWindowDuration = cycleWindowDuration;
+result.diagnostics.seedSource = "internal";
+result.diagnostics.seedCycleCount = 1;
 
 [tWindow, yWindow] = solverHandle(rhs, [0, cycleWindowDuration], yPilot(end, :).', opts.odeOptions);
 result.raw.window = struct('t', tWindow, 'y', yWindow);
@@ -71,6 +70,7 @@ if isempty(x0)
 end
 
 result.raw.seed = struct('x0', x0, 'v0', v0);
+result.diagnostics.seedInitializedParameterValue = get_active_parameter_value(x0, lds);
 
 seedOrbit = build_orbit_from_lc_column(x0, lds, opts.extractNumPoints);
 result.raw.seedOrbit = seedOrbit;
@@ -88,7 +88,11 @@ if ~isempty(vLC)
 end
 result.seed_corrected_parameter_value = get_active_parameter_value(correctedColumn, lds);
 
-returnInfo = return_to_input_parameter(correctedColumn, correctedTangent, opts, targetUserfunction.userInfo);
+try
+    returnInfo = return_to_input_parameter(correctedColumn, correctedTangent, opts, targetUserfunction.userInfo);
+catch ME
+    rethrow(ME);
+end
 result.diagnostics.returnScanDirections = string(returnInfo.scanDirections(:));
 result.diagnostics.returnScanColumns = reshape(double(returnInfo.scanColumns), [], 1);
 result.diagnostics.returnScanHitBudget = reshape(logical(returnInfo.scanHitBudget), [], 1);
@@ -108,11 +112,13 @@ result.message = "Periodic orbit initialized from time integration, corrected on
 result.period = orbit.period;
 result.orbit_t = orbit.t;
 result.orbit_y = orbit.y;
-[result.max_variable, result.min_variable, result.amplitude] = compute_statistics(orbit.y);
+[result.max_variable, result.min_variable, result.amplitude] = po_compute_statistics(orbit.y);
+qualityRhs = build_quality_rhs(matcontOdefile, result.output_parameter_values);
+result = po_maybe_attach_quality(result, qualityRhs, opts.computeQualityDiagnostics);
 end
 
 function opts = normalize_options(opts)
-cfg = orbitmatcont.default_config();
+cfg = po_matcont_default_config();
 defaults = struct( ...
     'solver', [], ...
     'solver_name', cfg.solver_name, ...
@@ -126,6 +132,7 @@ defaults = struct( ...
     'transientFraction', cfg.transientFraction, ...
     'transientTime', [], ...
     'extractNumPoints', cfg.extractNumPoints, ...
+    'computeQualityDiagnostics', cfg.computeQualityDiagnostics, ...
     'matcont_root', cfg.matcont_root, ...
     'matcont_odefile', cfg.matcont_odefile, ...
     'matcont_active_parameter', cfg.matcont_active_parameter, ...
@@ -141,6 +148,12 @@ defaults = struct( ...
     'matcont_return_scan_both_directions', cfg.matcont_return_scan_both_directions);
 
 names = fieldnames(defaults);
+unsupportedFields = po_find_unsupported_option_fields(opts);
+if ~isempty(unsupportedFields)
+    error('orbitmatcont:InvalidOptions', ...
+        'Unsupported MATCONT options.');
+end
+
 for i = 1:numel(names)
     name = names{i};
     if ~isfield(opts, name) || isempty(opts.(name))
@@ -299,7 +312,7 @@ elseif isa(odefun, 'function_handle') && nargin(odefun) == 0
     matcontOdefile = odefun;
 else
     error('orbitmatcont:MissingMatcontOdefile', ['Provide opts.matcont_odefile, or pass a MATCONT odefile as the first argument ' ...
-        'when using orbitmatcont.extract_periodic_orbit.']);
+        'when calling solve_periodic_orbit_matcont.']);
 end
 
 if ~isa(matcontOdefile, 'function_handle')
@@ -653,18 +666,6 @@ dydt = rhsFun(t, y, paramCell{:});
 dydt = dydt(:);
 end
 
-function [maxVariable, minVariable, amplitude] = compute_statistics(orbitY)
-if isempty(orbitY)
-    maxVariable = [];
-    minVariable = [];
-    amplitude = [];
-    return;
-end
-maxVariable = max(orbitY, [], 1);
-minVariable = min(orbitY, [], 1);
-amplitude = (maxVariable - minVariable) / 2;
-end
-
 function value = default_scalar(value, fallback)
 if isempty(value)
     value = fallback;
@@ -684,31 +685,14 @@ result.parameter_error = NaN;
 result.parameter_status = "";
 end
 
-function result = initialize_result(y0)
-nState = numel(y0);
-result = struct( ...
-    'success', false, ...
-    'has_orbit', false, ...
-    'status', "", ...
-    'code', NaN, ...
-    'message', "", ...
-    'period', [], ...
-    'orbit_t', [], ...
-    'orbit_y', zeros(0, nState), ...
-    'amplitude', [], ...
-    'max_variable', [], ...
-    'min_variable', [], ...
-    'event_times', zeros(0, 1), ...
-    'event_states', zeros(0, nState), ...
-    'backend_used', "matcont_orbit", ...
-    'input_parameter_values', zeros(1, 0), ...
-    'output_parameter_values', zeros(1, 0), ...
-    'active_parameter_index', [], ...
-    'input_active_parameter_value', NaN, ...
-    'seed_corrected_parameter_value', NaN, ...
-    'output_active_parameter_value', NaN, ...
-    'parameter_error', NaN, ...
-    'parameter_status', "", ...
-    'diagnostics', struct(), ...
-    'raw', struct());
+function rhs = build_quality_rhs(matcontOdefile, parameterValues)
+handles = feval(matcontOdefile);
+if ~(iscell(handles) && numel(handles) >= 2)
+    error('orbitmatcont:InvalidMatcontOdefile', ...
+        'The MATCONT odefile must return at least the init and RHS handles.');
+end
+
+rhsFun = handles{2};
+parameterValues = parameterValues(:);
+rhs = @(t, y) call_matcont_rhs(rhsFun, t, y, parameterValues);
 end
