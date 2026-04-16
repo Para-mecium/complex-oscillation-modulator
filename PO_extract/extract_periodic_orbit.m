@@ -1,5 +1,6 @@
 function result = extract_periodic_orbit(odefun, y0, parameter, opts)
 %EXTRACT_PERIODIC_ORBIT Detect periodic-orbit candidates from forward integration.
+% Formal I/O contract: see PO_extract/IO_CONTRACT.md.
 
 if nargin < 4 || isempty(opts)
     opts = struct();

@@ -2,6 +2,8 @@
 
 更新时间：2026-04-16
 
+正式 I/O contract 见 [IO_CONTRACT.md](/Users/caiyutong/Desktop/CYT/Codes/FMAM_code/PO_extract/IO_CONTRACT.md)。本文件保留工程背景、决策和开发路径，不再承担公共接口定义。
+
 ## 1. 工程目标
 
 目标是建立一个可维护的代码库，用于对“各类振荡调控算法”得到的参数，稳定且尽可能精确地计算其对应周期解的目标振荡特征。这里的“振荡特征”至少应包括：
@@ -193,6 +195,12 @@
 
 这会影响后续所有“基于现有基础继续开发”的可信度，因为测试链没有完全打通。
 
+后续决策：
+
+- 第一阶段正式废弃 `POinfo`
+- `PO_extract` 的唯一受支持公共入口统一为 `extract_periodic_orbit`
+- 旧的 warning 语义不再作为受支持 contract；状态表达统一迁移到结构化返回值
+
 ### 5.3 已验证的运行信号
 
 我额外用 Van der Pol 例子直接调用了 `extract_periodic_orbit`。当前实现可以返回：
@@ -264,7 +272,7 @@ features = evaluate_oscillation_features(orbit, observables, featureSpec, option
 
 优先事项：
 
-- 补回或正式废弃 `POinfo`，让测试重新全绿
+- 正式废弃 `POinfo`，让测试重新全绿，并统一迁移到 `extract_periodic_orbit`
 - 明确 `extract_periodic_orbit` 的 contract
 - 增加误差相关 diagnostics
 - 统一返回结构，让上层不再各自重复计算 amplitude / extrema
@@ -344,7 +352,7 @@ features = evaluate_oscillation_features(orbit, observables, featureSpec, option
 
 如果按最稳妥的路线推进，下一轮建议按下面顺序做：
 
-1. 修复 `PO_extract` 测试断裂，处理 `POinfo` 兼容问题
+1. 修复 `PO_extract` 测试断裂，正式移除 `POinfo` 旧接口依赖
 2. 为 `extract_periodic_orbit` 写一份正式 I/O contract
 3. 设计统一的 `orbit struct` 和 `feature struct`
 4. 在 `PO_extract` 内先实现一个独立的 feature evaluator
