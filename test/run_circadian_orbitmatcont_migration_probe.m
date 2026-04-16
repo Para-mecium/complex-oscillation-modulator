@@ -1,0 +1,226 @@
+function result = run_circadian_orbitmatcont_migration_probe()
+%RUN_CIRCADIAN_ORBITMATCONT_MIGRATION_PROBE
+% Compare old circadian.find_orbit against the new orbitmatcont interface
+% without modifying any production circadian files.
+
+rootDir = fileparts(fileparts(mfilename('fullpath')));
+addpath(rootDir);
+addpath(fullfile(rootDir, 'Circadian'));
+addpath(genpath(fullfile(rootDir, 'MatCont7p6')));
+
+cfg = default_config();
+model = circadian.build_model(cfg);
+params = reshape(model.defaultParams, 1, []);
+y0 = cfg.initialState(:);
+
+taskSpec = struct( ...
+    'goalOrder', {{'period', 'amplitude'}}, ...
+    'goals', struct('period', 24, 'amplitude', 0.02), ...
+    'controlledParams', {{'Kd', 'AT'}});
+cfg.goalOrder = taskSpec.goalOrder;
+cfg.goals = taskSpec.goals;
+cfg.controlledParams = taskSpec.controlledParams;
+
+oldOrbit = circadian.find_orbit(model, params, cfg, y0);
+assert(oldOrbit.success, 'Old circadian.find_orbit failed: %s', oldOrbit.message);
+
+matcontOpts = struct( ...
+    'single_timespan', cfg.orbit.searchWindow, ...
+    'max_windows', max(1, numel(cfg.orbit.windowGrowth)), ...
+    'solver_name', 'ode45', ...
+    'solver_tol', cfg.orbit.solverTol, ...
+    'transientFraction', cfg.orbit.transientFraction, ...
+    'extractNumPoints', cfg.orbit.extractNumPoints, ...
+    'matcont_odefile', @circadian_matcont_odefile, ...
+    'matcont_active_parameter', 2, ...
+    'matcont_parameter_tolerance', orbitmatcont.default_config().matcont_parameter_tolerance, ...
+    'matcont_window_timespan', 1.2 * oldOrbit.period);
+
+newPo = orbitmatcont.extract_periodic_orbit(@odefun, y0, params, matcontOpts);
+
+result = struct();
+result.params = params;
+result.newMethodParameterReport = summarize_parameter_report(newPo);
+
+newOrbit = finalize_circadian_orbit(newPo);
+
+oldState = state(model.observables, params, oldOrbit.t, oldOrbit.y, cfg.truncationOrder, model.pv);
+oldState.updatePeriod();
+oldState.updateVar2();
+newState = state(model.observables, newPo.output_parameter_values, newOrbit.t, newOrbit.y, cfg.truncationOrder, model.pv);
+newState.updatePeriod();
+newState.updateVar2();
+
+oldView = fmam_state_ops.solverViewFromState(oldState);
+oldDerived = fmam_state_ops.derivedViewFromState(oldState);
+newView = fmam_state_ops.solverViewFromState(newState);
+newDerived = fmam_state_ops.derivedViewFromState(newState);
+
+[itemsPerturbOld, itemsControlledOld, maxStepOld] = circadian.build_task_inputs( ...
+    cfg, model, oldView, oldDerived, cfg);
+[itemsPerturbNew, itemsControlledNew, maxStepNew] = circadian.build_task_inputs( ...
+    cfg, model, newView, newDerived, cfg);
+
+oldTask = FMAM_ODE(model.system, model.observables, oldView, itemsPerturbOld, itemsControlledOld, ...
+    maxStepOld, cfg.fmam.errBound, 'derivatives', model.derivatives);
+newTask = FMAM_ODE(model.system, model.observables, newView, itemsPerturbNew, itemsControlledNew, ...
+    maxStepNew, cfg.fmam.errBound, 'derivatives', model.derivatives);
+
+oldResidual = reshape(oldTask.res(), 1, []);
+newResidual = reshape(newTask.res(), 1, []);
+
+result = struct();
+result.migration_status = "compared";
+result.message = "";
+result.params = params;
+result.newMethodParameterReport = summarize_parameter_report(newPo);
+result.oldOrbit = summarize_orbit(oldOrbit);
+result.newOrbit = summarize_orbit(newOrbit);
+result.oldSolverView = summarize_solver_view(oldView);
+result.newSolverView = summarize_solver_view(newView);
+result.oldResidual = oldResidual;
+result.newResidual = newResidual;
+result.residualDelta = newResidual - oldResidual;
+result.relativeResidualDelta = (newResidual - oldResidual) ./ max(abs(oldResidual), 1e-12);
+result.coverage = coverage_assessment();
+
+disp('Circadian migration probe summary:');
+disp(result.newMethodParameterReport);
+disp(result.oldOrbit);
+disp(result.newOrbit);
+disp(struct('oldResidual', oldResidual, 'newResidual', newResidual, 'delta', result.residualDelta));
+
+    function dydt = odefun(~, y, parameter)
+        dydt = model.rhs(y, parameter);
+    end
+end
+
+function summary = summarize_parameter_report(poResult)
+summary = struct( ...
+    'inputActiveParameter', poResult.input_active_parameter_value, ...
+    'seedCorrectedActiveParameter', poResult.seed_corrected_parameter_value, ...
+    'outputActiveParameter', poResult.output_active_parameter_value, ...
+    'parameterError', poResult.parameter_error, ...
+    'parameterStatus', string(poResult.parameter_status), ...
+    'status', string(poResult.status));
+end
+
+function orbit = finalize_circadian_orbit(poResult)
+obs = poResult.orbit_y(:, 2) + poResult.orbit_y(:, 3);
+orbit = struct( ...
+    'success', true, ...
+    'message', poResult.message, ...
+    't', poResult.orbit_t(:), ...
+    'y', poResult.orbit_y, ...
+    'obs', obs(:), ...
+    'period', poResult.period, ...
+    'amplitude', 0.5 * (max(obs) - min(obs)), ...
+    'yMax', max(obs), ...
+    'yMin', min(obs), ...
+    'result', poResult);
+end
+
+function summary = summarize_orbit(orbit)
+summary = struct( ...
+    'period', orbit.period, ...
+    'amplitude', orbit.amplitude, ...
+    'obsMax', orbit.yMax, ...
+    'obsMin', orbit.yMin, ...
+    'numSamples', numel(orbit.t));
+end
+
+function summary = summarize_solver_view(view)
+summary = struct( ...
+    'period', 2 * pi * view.p_Psi(1), ...
+    'params', reshape(view.params, 1, []), ...
+    'pPsi0', view.p_Psi(1), ...
+    'varPhiMax', reshape(view.varPhiMax, 1, []), ...
+    'obsPhiMax', reshape(view.obsPhiMax, 1, []));
+end
+
+function coverage = coverage_assessment()
+coverage = struct();
+coverage.what_it_covers = { ...
+    'seed orbit -> state -> solverView projection differences', ...
+    'initial FMAM residual differences under the same task specification', ...
+    'observable extrema and period changes after replacing orbit extraction'};
+coverage.what_it_misses = { ...
+    'orbit-finding failure boundaries, because the probe forces a MATCONT window using the old orbit period', ...
+    'runtime/stability differences during FMAM continuation beyond the initial task.res()', ...
+    'phase-gauge-equivalent orbits that produce different Fourier coefficients but similar downstream behavior', ...
+    'cases where a dedicated circadian MATCONT odefile with higher-order derivatives changes refinement quality'};
+end
+
+function out = circadian_matcont_odefile
+out = { ...
+    @init, ...
+    @fun_eval, ...
+    @jacobian, ...
+    @jacobianp, ...
+    [], ...
+    [], ...
+    [], ...
+    [], ...
+    []};
+
+    function [tspan, y0, options] = init
+        y0 = [0.10; 0.08; 0.07];
+        handles = feval(@circadian_matcont_odefile);
+        options = odeset('Jacobian', handles{3}, 'JacobianP', handles{4});
+        tspan = [0 10];
+    end
+
+    function dydt = fun_eval(~, y, Kd, AT)
+        beta = 0.1572;
+        FA = free_active(AT, Kd, y(3));
+        dydt = [ ...
+            beta * (FA / AT - y(1)); ...
+            beta * (y(1) - y(2)); ...
+            beta * (y(2) - y(3))];
+    end
+
+    function jac = jacobian(~, y, Kd, AT)
+        beta = 0.1572;
+        dFA_dPn = d_free_active_dPn(AT, Kd, y(3));
+        jac = [ ...
+            -beta, 0, beta * dFA_dPn / AT; ...
+            beta, -beta, 0; ...
+            0, beta, -beta];
+    end
+
+    function jacp = jacobianp(~, y, Kd, AT)
+        beta = 0.1572;
+        FA = free_active(AT, Kd, y(3));
+        dFA_dKd = d_free_active_dKd(AT, Kd, y(3));
+        dFA_dAT = d_free_active_dAT(AT, Kd, y(3));
+        df1_dKd = beta * (dFA_dKd / AT);
+        df1_dAT = beta * ((dFA_dAT * AT - FA) / AT^2);
+        jacp = [ ...
+            df1_dKd, df1_dAT; ...
+            0, 0; ...
+            0, 0];
+    end
+end
+
+function value = free_active(AT, Kd, Pn)
+delta = AT - Pn - Kd;
+value = 0.5 * (delta + sqrt(delta.^2 + 4 * Kd * AT));
+end
+
+function value = d_free_active_dPn(AT, Kd, Pn)
+delta = AT - Pn - Kd;
+rootTerm = sqrt(delta.^2 + 4 * Kd * AT);
+value = 0.5 * (-1 - delta ./ rootTerm);
+end
+
+function value = d_free_active_dKd(AT, Kd, Pn)
+delta = AT - Pn - Kd;
+rootTerm = sqrt(delta.^2 + 4 * Kd * AT);
+value = 0.5 * (-1 + (-delta + 2 * AT) ./ rootTerm);
+end
+
+function value = d_free_active_dAT(AT, Kd, Pn)
+delta = AT - Pn - Kd;
+rootTerm = sqrt(delta.^2 + 4 * Kd * AT);
+value = 0.5 * (1 + (delta + 2 * Kd) ./ rootTerm);
+end
