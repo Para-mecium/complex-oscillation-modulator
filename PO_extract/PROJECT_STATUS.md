@@ -150,7 +150,7 @@
 
 ### 5.1 测试的正面信号
 
-`PO_extract/test_extract_periodic_orbit.m` 已经覆盖了这些场景：
+`PO_extract/test_unified_periodic_orbit_entrypoint.m` 已经覆盖了这些场景：
 
 - 收敛极限环
 - 非振荡平衡态
@@ -160,7 +160,7 @@
 - 输入校验
 - 请求 MATCONT 但回退 direct 的行为
 
-见 [test_extract_periodic_orbit.m](/Users/caiyutong/Desktop/CYT/Codes/FMAM_code/PO_extract/test_extract_periodic_orbit.m:1)
+见 [test_unified_periodic_orbit_entrypoint.m](/Users/caiyutong/Desktop/CYT/Codes/FMAM_code/PO_extract/test_unified_periodic_orbit_entrypoint.m:1)
 
 这说明 `PO_extract` 已经不是一次性脚本，而是正在向稳定模块演化。
 
@@ -169,24 +169,24 @@
 我在 2026-04-16 直接运行了：
 
 ```matlab
-/Applications/MATLAB_R2024b.app/bin/matlab -batch "cd('/Users/caiyutong/Desktop/CYT/Codes/FMAM_code'); addpath('PO_extract'); test_extract_periodic_orbit"
+/Applications/MATLAB_R2024b.app/bin/matlab -batch "cd('/Users/caiyutong/Desktop/CYT/Codes/FMAM_code'); addpath('PO_extract'); test_unified_periodic_orbit_entrypoint"
 ```
 
 结果测试失败，报错为：
 
 ```text
 函数或变量 'POinfo' 无法识别。
-出错 test_extract_periodic_orbit (第 87 行)
+出错 test_unified_periodic_orbit_entrypoint (第 87 行)
 ```
 
 对应代码位置：
 
-- [test_extract_periodic_orbit.m](/Users/caiyutong/Desktop/CYT/Codes/FMAM_code/PO_extract/test_extract_periodic_orbit.m:87)
+- [test_unified_periodic_orbit_entrypoint.m](/Users/caiyutong/Desktop/CYT/Codes/FMAM_code/PO_extract/test_unified_periodic_orbit_entrypoint.m:87)
 
 当前 `PO_extract/` 目录下只有两个文件：
 
 - `extract_periodic_orbit.m`
-- `test_extract_periodic_orbit.m`
+- `test_unified_periodic_orbit_entrypoint.m`
 
 说明现状至少存在一个明确断裂：
 

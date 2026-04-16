@@ -28,6 +28,7 @@ result = extract_periodic_orbit(odefun, y0, parameter, opts)
 
 正式支持的稳定选项：
 
+- `opts.orbit_solver`
 - `opts.solver` 或 `opts.solver_name`
 - `opts.solver_options`
 - `opts.odeOptions`
@@ -46,29 +47,35 @@ result = extract_periodic_orbit(odefun, y0, parameter, opts)
 - `opts.consecutiveCycles`
 - `opts.samplesPerCycle`
 - `opts.extractNumPoints`
+- `opts.computeQualityDiagnostics`
 
 优先级规则：
 
+- 若提供 `opts.orbit_solver`，则统一入口按该模式路由；缺省值为 `'direct'`
+- 当前正式支持的 solver 仅有 `'direct'` 与 `'matcont'`
 - 若 `opts.tspan` 已提供，则优先使用 `opts.tspan`；否则才由 `single_timespan/max_windows/total_timespan` 派生总时间窗
 - 若同时提供 `transientTime` 与 `transientFraction`，则优先使用 `transientTime`
 - 若同时提供 `solver` 与 `solver_name`，则按归一化后的 solver handle 执行；`solver_name` 仅作为名称记录
 - `solver_options` 与 `odeOptions` 会合并，内部事件函数会覆盖外部传入的 `Events`
+- `computeQualityDiagnostics` 缺省为 `false`；仅在显式开启时才计算并返回 `diagnostics.quality`
 
 ## 2. 弃用兼容输入
 
 以下选项当前仍受支持，但仅作为兼容入口保留，新调用方不应继续使用：
 
 - `opts.event`
-- `opts.min_events`
-- `opts.match_tol`
-- `opts.period_tol`
 
 兼容语义：
 
 - `event` 可映射为状态索引截面或自定义 section 句柄
-- `min_events` 会映射到 `minCrossings`
-- `match_tol` 会映射到 `poincareTol`
-- `period_tol` 会映射到 `periodTol`
+
+已移除路由：
+
+- `orbit_solver='direct_then_matcont'`
+- `orbit_solver='matcont_internal'`
+
+除 `opts.event` 外，任何不在正式支持范围内的选项字段都会按通用 unsupported-options 语义拒绝。
+这包括历史兼容字段和实验字段，例如 `opts.backend`、`opts.min_events`、`opts.match_tol`、`opts.period_tol`。
 
 后续如果移除这些兼容入口，应先更新本文件并同步迁移调用方。
 
@@ -87,6 +94,7 @@ result = extract_periodic_orbit(odefun, y0, parameter, opts)
 - `amplitude`
 - `max_variable`
 - `min_variable`
+- `solver_used`
 
 字段语义：
 
@@ -101,6 +109,7 @@ result = extract_periodic_orbit(odefun, y0, parameter, opts)
 - `amplitude`：按 `orbit_y` 每个状态分量计算得到的半峰峰值，等于 `(max_variable - min_variable) / 2`
 - `max_variable`：按 `orbit_y` 每个状态分量计算得到的最大值
 - `min_variable`：按 `orbit_y` 每个状态分量计算得到的最小值
+- `solver_used`：顶层入口最终返回结果来自哪个 solver；固定为 `"direct"` 或 `"matcont"`
 
 说明：
 
@@ -176,19 +185,29 @@ result = extract_periodic_orbit(odefun, y0, parameter, opts)
 
 - 顶层字段是否存在可以保留，但其内部 schema 不冻结
 - `diagnostics` 可用于调试、日志和实验分析，但字段名、嵌套结构、数值定义都可能变化
+- `diagnostics.quality` 仅在 `opts.computeQualityDiagnostics=true` 时返回
 - `raw` 属于内部调试输出，不应作为公共 API 使用
-- MATCONT 相关预留输入当前只影响实验层诊断，不构成稳定后端 contract
+- `diagnostics` 当前还承载 direct 检测细节、MATCONT parameter-return、轨道质量指标等实验信息
 
-## 6. 当前不纳入稳定 contract 的预留输入
+## 6. 当前不纳入稳定 contract 的求解器专用输入
 
-以下输入项当前存在于实现中，但属于实验层或预留能力，不纳入正式稳定 contract：
+以下输入项当前存在于实现中，但属于求解器专用扩展，不纳入统一稳定 contract：
 
-- `backend`
 - `matcont_root`
 - `matcont_odefile`
 - `matcont_active_parameter`
 - `matcont_ntst`
 - `matcont_ncol`
 - `matcont_tolerance`
+- `matcont_parameter_values`
+- `matcont_window_timespan`
+- `matcont_cycle_window_factor`
+- `matcont_options`
+- `matcont_parameter_tolerance`
+- `matcont_return_max_points`
+- `matcont_return_scan_both_directions`
 
-当前实现下，这些输入最多影响 MATCONT 诊断记录；不保证触发真实 MATCONT 求解流程。
+这些输入会影响 MATCONT 后端的真实求解流程，但不保证被 direct 后端消费。
+
+未纳入支持范围的 MATCONT 扩展字段同样按通用 unsupported-options 语义拒绝。
+当前实现不再支持 external seed 初始化；`seed_orbit` 和 `seed_quality_reference` 都属于不支持字段，MATCONT solver 固定使用 internal preprocessing。
