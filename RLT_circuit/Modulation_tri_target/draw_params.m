@@ -1,10 +1,9 @@
 clear
 clc
-
+%%
 lineWidth = 0.5;
 mksize = 10;
 stepsize = 10;
-lambdaStepCap = 5e-3;
 
 scriptDir = fileparts(mfilename('fullpath'));
 pathFile = fullfile(scriptDir, 'params_modulation_path.mat');
@@ -12,16 +11,6 @@ targetFiles = { ...
     fullfile(scriptDir, 'period_target_1p0x.mat'), ...
     fullfile(scriptDir, 'period_target_1p5x.mat'), ...
     fullfile(scriptDir, 'period_target_2p0x.mat')};
-
-addpath(scriptDir);
-needGenerate = ~isfile(pathFile);
-for i = 1:numel(targetFiles)
-    needGenerate = needGenerate || ~isfile(targetFiles{i});
-end
-if needGenerate
-    disp('Modulation path cache missing. Generate with Modulation_tri_target...');
-    Modulation_tri_target('generatePathCache', true, 'lambdaStepCap', lambdaStepCap);
-end
 
 pathCache = load(pathFile);
 curve_params = double(pathCache.curve_params);

@@ -1,104 +1,14 @@
 lineWidth = 0.5;
 mksize = 10;
 stepsize = 1;
-lambdaStepCap = 5e-3;
 
 scriptDir = fileparts(mfilename('fullpath'));
-circuitDir = fileparts(scriptDir);
-fmamDir = fileparts(circuitDir);
 plotDataFile = fullfile(scriptDir, "params_modulation_path.mat");
 
-startDir = pwd;
-cleanupObj = onCleanup(@() cd(startDir)); 
-
-%% load existing plotting data or generate new data
-needGenerate = ~isfile(plotDataFile);
-if ~needGenerate
-    dataCache = load(plotDataFile);
-    curve_params = dataCache.curve_params;
-    params_start = dataCache.params_start;
-    params_end = dataCache.params_end;
-    disp(['Use existing plotting data: ', plotDataFile]);
-end
-
-if needGenerate
-    disp('No valid cached plotting data found. Generate with FMAM_ODE...');
-
-    load(fullfile(scriptDir, "initData_circuit.mat"));
-    load(fullfile(scriptDir, "initData_ODE.mat"));
-
-    cd(circuitDir);
-    System
-    obs = [];
-
-    params = Parameters;
-    t = TS{1};
-    TS_var = TS{2};
-    M = 75;
-
-    cd(fmamDir);
-    derivatives = build_symbolic_derivatives(sys, obs, numel(params));
-
-    PV = struct('name', 'var', 'idx', 1);
-    State = state(obs, params, t, TS_var, M, PV);
-    StateView = fmam_state_ops.solverViewFromState(State);
-
-    items_per = struct;
-    items_per(1).prop = 'p_Psi';
-    items_per(1).idx = 1;
-    items_per(1).target = period / (2 * pi);
-
-    items_per(2).prop = 'varAmp';
-    items_per(2).idx = 1;
-    items_per(2).target = varAmp(1);
-
-    items_per(3).prop = 'varAmp';
-    items_per(3).idx = 2;
-    items_per(3).target = varAmp(2);
-
-    items_per(4).prop = 'varAmp';
-    items_per(4).idx = 3;
-    items_per(4).target = varAmp(3);
-
-    items_controlled = [1 4 5 6];
-    errBound = 1e-6;
-    continuationOptions = struct( ...
-        'initialLambdaStep', lambdaStepCap, ...
-        'maxLambdaStep', lambdaStepCap,...
-        'predictorMode', 'constant');
-
-    Modtask = FMAM_ODE(sys, obs, StateView, items_per, items_controlled, [], errBound, ...
-        'derivatives', derivatives, 'continuationOptions', continuationOptions);
-    Modtask.isPsiUpdated = true;
-    Modtask.needLog = true;
-
-    Modtask.fit();
-    params_start = State.params;
-    Modtask.step();
-    Modtask.errBound = 1e-12;
-    Modtask.fit();
-
-    StateView = Modtask.exportSolverView();
-    params_end = StateView.params;
-
-    solution = Modtask.logs;
-    if isempty(solution)
-        error('draw_contour_dataDriven:NoContinuationLogs', ...
-            ['No continuation logs were captured. Increase lambdaStepCap or verify ' ...
-             'the continuation target differs from the initial state.']);
-    end
-
-    curve_params = zeros(numel(solution), numel(solution(1).params));
-    for i = 1:numel(solution)
-        curve_params(i, :) = solution(i).params;
-    end
-
-    dataOut = struct();
-    dataOut.curve_params = curve_params;
-    dataOut.params_start = params_start;
-    dataOut.params_end = params_end;
-    save(plotDataFile, '-struct', 'dataOut');
-end
+dataCache = load(plotDataFile);
+curve_params = dataCache.curve_params;
+params_start = dataCache.params_start;
+params_end = dataCache.params_end;
 
 params_start = reshape(params_start, 1, []);
 params_end = reshape(params_end, 1, []);

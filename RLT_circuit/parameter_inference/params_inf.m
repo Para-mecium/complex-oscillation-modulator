@@ -1,6 +1,9 @@
 clear
 clc
 %% Data-driven procedure
+%
+needPath = true;
+scriptDir = fileparts(mfilename('fullpath'));
 % load data
 load("initData_circuit.mat")
 
@@ -49,9 +52,8 @@ errBound = 1e-6;
 continuationOptions = struct('initialLambdaStep', 0.01, 'predictorMode', 'constant');
 Modtask = FMAM_ODE(sys,obs,StateView,items_per,items_controlled, [] ,errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-% Modtask.fit()
 Modtask.isPsiUpdated = true;
-% Modtask.needLog = true;
+Modtask.needLog = needPath;
 %%
 tic
 Modtask.fit()
@@ -64,6 +66,31 @@ disp(['Computing time: ', num2str(elapsedTime), ' seconds']);
 
 StateView = Modtask.exportSolverView();
 StateDerived = Modtask.exportDerivedView();
+
+if needPath
+    plotDataFile = fullfile(scriptDir, "params_modulation_path.mat");
+    params_start_path = reshape(double(State.params), 1, []);
+    params_end_path = reshape(double(StateView.params), 1, []);
+
+    solution_path = Modtask.logs;
+    if isempty(solution_path)
+        error('params_inf:NoContinuationLogs', ...
+            ['No continuation logs for params_modulation_path. Increase lambdaStepCap ' ...
+            'or verify the continuation target differs from the initial state.']);
+    end
+
+    curve_params_path = zeros(numel(solution_path), numel(solution_path(1).params));
+    for i = 1:numel(solution_path)
+        curve_params_path(i, :) = reshape(double(solution_path(i).params), 1, []);
+    end
+
+    pathData = struct();
+    pathData.curve_params = curve_params_path;
+    pathData.params_start = params_start_path;
+    pathData.params_end = params_end_path;
+    save(plotDataFile, '-struct', 'pathData');
+    fprintf('Saved continuation path cache: %s\n', plotDataFile);
+end
 
 %% Extract ODE periodic orbit at inferred parameters
 Parameters = StateView.params;
@@ -81,7 +108,7 @@ opts = struct( ...
     'solver_name', 'ode45', ...
     'tspan', [0, searchWindow], ...
     'event', 1, ...
-    'solver_tol', struct('RelTol', 1e-6, 'AbsTol', 1e-6), ...
+    'solver_tol', struct('RelTol', 1e-6, 'AbsTol', 1e-9), ...
     'minCrossings', 3, ...
     'transientFraction', 0);
 
@@ -93,19 +120,20 @@ if ~poResult.has_orbit
         poResult.message);
 end
 
-State = state(obs, Parameters, poResult.orbit_t, poResult.orbit_y, M, PV);
-State.updatePeriod();
-State.updateVar2();
+orbitForFeatures = struct( ...
+    't', poResult.orbit_t(:), ...
+    'y', poResult.orbit_y, ...
+    'period', poResult.period);
+poFeatures = evaluate_orbit_features(orbitForFeatures, [], [], struct());
 
-TS = {State.t, State.TS_var};
-period = State.period;
-varAmp = State.varAmp;
-varMax = State.varMax;
-varMin = State.varMin;
+TS = {poResult.orbit_t, poResult.orbit_y};
+period = poFeatures.period;
+varAmp = reshape(poFeatures.state.amplitude, 1, []);
+varMax = reshape(poFeatures.state.max, 1, []);
+varMin = reshape(poFeatures.state.min, 1, []);
 
 save(fullfile('RLT_circuit', 'learnedData_ODE.mat'), ...
     'TS', 'Parameters', 'period', 'varAmp', 'varMax', 'varMin');
-
 
 %% 
 figure
@@ -113,6 +141,6 @@ hold on
 grid on
 box on
 
-State.TSplot('TS_var',1,'t')
-State.TSplot('TS_var',2,'t')
-State.TSplot('TS_var',3,'t')
+plot(poResult.orbit_t, poResult.orbit_y(:, 1))
+plot(poResult.orbit_t, poResult.orbit_y(:, 2))
+plot(poResult.orbit_t, poResult.orbit_y(:, 3))

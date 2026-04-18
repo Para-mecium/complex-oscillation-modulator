@@ -40,11 +40,6 @@ switch period_multiplier
     case 2
         targetFile = fullfile(scriptDir, 'period_target_2p0x.mat');
 end
-if ~isfile(baselineFile) || ~isfile(targetFile)
-    disp('Target cache missing. Generate with Modulation_tri_target...');
-    Modulation_tri_target();
-end
-
 targetData = load(targetFile);
 baselineData = load(baselineFile);
 
@@ -53,7 +48,30 @@ figure
 %% ODE plot
 t = targetData.TS{1};
 y = targetData.TS{2} / scaleFactor;
-[t_plot, y_plot] = repeat_periodic_trajectory(t, y, period_num);
+tRel = t(:) - t(1);
+Tstep = tRel(end);
+tLong = tRel;
+yLong = y;
+for k = 1:5
+    tLong = [tLong; tRel(2:end) + k * Tstep];
+    yLong = [yLong; y(2:end, :)];
+end
+ix = find(islocalmax(yLong(:, 1)));
+i0 = ix(end - 1);
+i1 = ix(end);
+t = tLong(i0:i1) - tLong(i0);
+y = yLong(i0:i1, :);
+
+nPoint = numel(t);
+t_plot = zeros(nPoint * period_num, 1);
+y_plot = zeros(nPoint * period_num, size(y, 2));
+timeStart = 0;
+for k = 1:period_num
+    idx = (1:nPoint) + (k - 1) * nPoint;
+    t_plot(idx) = t + timeStart;
+    y_plot(idx, :) = y;
+    timeStart = t_plot(idx(end));
+end
 
 hold on
 plt_l = plot(t_plot, y_plot(:, index_PV), 'LineStyle', '-', 'LineWidth', linewidth);
@@ -78,18 +96,11 @@ V2 = tab.VF2(startidx:end) / scaleFactor;
 V3 = tab.VF3(startidx:end) / scaleFactor;
 y = [V1, V2, V3];
 
-localmax = islocalmax(y(:, 1));
-index_max = find(localmax);
-if numel(index_max) < 2
-    error('draw_TS:InsufficientCircuitPeaks', ...
-        'At least two local maxima of V1 are required to extract one period.');
-end
-
-index_start = index_max(end - 1);
-index_end = index_max(end);
-
-t = t(index_start:index_end) - t(index_start);
-y = y(index_start:index_end, :);
+ix = find(islocalmax(y(:, 1)));
+i0 = ix(end - 1);
+i1 = ix(end);
+t = t(i0:i1) - t(i0);
+y = y(i0:i1, :);
 
 tend = t(end);
 tstart = t(1);
@@ -99,7 +110,16 @@ for i = 1:size(y, 2)
     yy(:, i) = spline(t, y(:, i), tt);
 end
 
-[t_plot, y_plot] = repeat_periodic_trajectory(tt, yy, period_num);
+nPoint = numel(tt);
+t_plot = zeros(nPoint * period_num, 1);
+y_plot = zeros(nPoint * period_num, size(yy, 2));
+timeStart = 0;
+for k = 1:period_num
+    idx = (1:nPoint) + (k - 1) * nPoint;
+    t_plot(idx) = tt + timeStart;
+    y_plot(idx, :) = yy;
+    timeStart = t_plot(idx(end));
+end
 plt_s = scatter(t_plot, y_plot(:, index_PV), mksize, 'Marker', 'x');
 
 %% figure properties
@@ -136,22 +156,3 @@ set(gca, 'FontSize', 10, 'XTick', XTick_2DTS, 'YTick', YTick_2DTS, ...
     'XTickLabel', XTickLabel_2DTS, 'YTickLabel', YTickLabel_2DTS)
 set(plt_l, 'Color', colors_l{index_PV})
 set(plt_s, 'MarkerFaceColor', colors_s{index_PV}, 'MarkerEdgeColor', colors_s{index_PV})
-
-%% local functions
-function [tPlot, yPlot] = repeat_periodic_trajectory(t, y, repeatCount)
-t = t(:);
-y = double(y);
-nPoint = numel(t);
-nVar = size(y, 2);
-
-tPlot = zeros(nPoint * repeatCount, 1);
-yPlot = zeros(nPoint * repeatCount, nVar);
-timeStart = 0;
-
-for k = 1:repeatCount
-    idx = (1:nPoint) + (k - 1) * nPoint;
-    tPlot(idx) = t + timeStart;
-    yPlot(idx, :) = y;
-    timeStart = tPlot(idx(end));
-end
-end
