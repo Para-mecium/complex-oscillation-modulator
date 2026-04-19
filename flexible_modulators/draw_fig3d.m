@@ -79,9 +79,9 @@ for i = 1:numel(curveFiles)
     seedPeriod = loaded.seed.derivedView.period;
 
     leftParams = vertcat(loaded.leftBranch.params);
-    leftPeriod = [loaded.leftBranch.period].';
+    leftPeriod = arrayfun(@(entry) entry.derived.period, loaded.leftBranch).';
     rightParams = vertcat(loaded.rightBranch.params);
-    rightPeriod = [loaded.rightBranch.period].';
+    rightPeriod = arrayfun(@(entry) entry.derived.period, loaded.rightBranch).';
 
     curveI1{i} = [flipud(leftParams(:, 1)); seedParams(1); rightParams(:, 1)];
     curveET{i} = [flipud(leftParams(:, 2)); seedParams(2); rightParams(:, 2)];

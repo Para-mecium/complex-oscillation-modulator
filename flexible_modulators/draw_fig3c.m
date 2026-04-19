@@ -77,9 +77,9 @@ for i = 1:numel(curveFiles)
     seedAmplitude = loaded.seed.derivedView.varAmp(2);
 
     leftParams = vertcat(loaded.leftBranch.params);
-    leftAmplitude = [loaded.leftBranch.amplitude].';
+    leftAmplitude = arrayfun(@(entry) entry.derived.varAmp(2), loaded.leftBranch).';
     rightParams = vertcat(loaded.rightBranch.params);
-    rightAmplitude = [loaded.rightBranch.amplitude].';
+    rightAmplitude = arrayfun(@(entry) entry.derived.varAmp(2), loaded.rightBranch).';
 
     curveI1{i} = [flipud(leftParams(:, 1)); seedParams(1); rightParams(:, 1)];
     curveET{i} = [flipud(leftParams(:, 2)); seedParams(2); rightParams(:, 2)];

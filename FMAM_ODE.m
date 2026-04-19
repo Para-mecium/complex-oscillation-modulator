@@ -1473,11 +1473,7 @@ classdef FMAM_ODE < handle
                 log_curr.usedLM = false;
             end
 
-            stateMeasureIdx = min(2, obj.dimVar);
-            log_curr.period = derived.period;
-            log_curr.amplitude = derived.varAmp(stateMeasureIdx);
-            log_curr.yMax = derived.varMax(stateMeasureIdx);
-            log_curr.yMin = derived.varMin(stateMeasureIdx);
+            log_curr.derived = derived;
 
             if isempty(obj.logs)
                 obj.logs = log_curr;

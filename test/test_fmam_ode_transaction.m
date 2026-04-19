@@ -134,6 +134,22 @@ function testSuccessfulStepCommitsTargetAndLogs(testCase)
     verifyEqual(testCase, task.logs.accepted_p_Psi_idx_1, finalView.p_Psi(1), 'AbsTol', 1e-12);
 end
 
+function testSuccessfulStepLogsObservableMeasures(testCase)
+    delta = 1e-3;
+    task = make_period_target_task_with_observable(delta, delta / 10, 20, ...
+        'continuationOptions', struct('initialSteps', 1));
+
+    task.step();
+
+    verifyTrue(testCase, isfield(task.logs, 'derived'));
+    verifyTrue(testCase, isfield(task.logs.derived, 'period'));
+    verifyTrue(testCase, isfield(task.logs.derived, 'obsAmp'));
+    verifyTrue(testCase, isfield(task.logs.derived, 'obsMax'));
+    verifyTrue(testCase, isfield(task.logs.derived, 'obsMin'));
+    verifyEqual(testCase, task.logs.derived.obsAmp(1), ...
+        0.5 * (task.logs.derived.obsMax(1) - task.logs.derived.obsMin(1)), 'AbsTol', 1e-12);
+end
+
 function testConditionStopDiscardRestoresAcceptedState(testCase)
     delta = 1e-3;
     task = make_mock_period_task(delta, inf, struct( ...
@@ -331,6 +347,21 @@ end
 function task = make_period_target_task(delta, accuracy, maxIterations, varargin)
     sys = make_harmonic_system();
     obs = {};
+    derivatives = build_symbolic_derivatives(sys, obs, 1);
+    PV = struct('name', 'var', 'idx', 1);
+    solverView = make_reference_solver_view(obs, 1, 3, PV);
+
+    items_per = struct('prop', 'p_Psi', 'idx', 1, 'target', solverView.p_Psi(1) + delta);
+    maxStep = max(abs(delta), 1e-6);
+    newtonOptions = struct('maxIterations', maxIterations);
+    task = FMAM_ODE(sys, obs, solverView, items_per, 1, maxStep, accuracy, ...
+        'derivatives', derivatives, 'newtonOptions', newtonOptions, varargin{:});
+    task.needLog = true;
+end
+
+function task = make_period_target_task_with_observable(delta, accuracy, maxIterations, varargin)
+    sys = make_harmonic_system();
+    obs = {@(variable) variable(:, 1) + 2 * variable(:, 2)};
     derivatives = build_symbolic_derivatives(sys, obs, 1);
     PV = struct('name', 'var', 'idx', 1);
     solverView = make_reference_solver_view(obs, 1, 3, PV);

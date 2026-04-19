@@ -78,6 +78,7 @@ for i = 1:numel(targetAmplitudes)
     seedTask.errBound = 1e-12;
     seedTask.fit()
 
+    % left branch
     seed = struct();
     seed.params = reshape(seedTask.exportSolverView().params, 1, []);
     seed.solverView = seedTask.exportSolverView();
@@ -104,7 +105,7 @@ for i = 1:numel(targetAmplitudes)
 
     leftBranch = leftBranchTask.logs;
 
-    leftBranch = trim_branch_logs(leftBranch, maxParamJump, maxPeriodJump);
+    % right branch
 
     continuationOptions = struct( ...
         'predictorMode', 'constant', ...
@@ -127,34 +128,6 @@ for i = 1:numel(targetAmplitudes)
 
     rightBranch = rightBranchTask.logs;
 
-    rightBranch = trim_branch_logs(rightBranch, maxParamJump, maxPeriodJump);
-
     save(outputFile, 'seed', 'leftBranch', 'rightBranch');
     fprintf('Saved data: %s\n', outputFile);
-end
-
-%%
-function branch = trim_branch_logs(branch, maxParamJump, maxPeriodJump)
-if isempty(branch)
-    return
-end
-
-keep = true(1, numel(branch));
-for i = 2:numel(branch)
-    currentParams = reshape(branch(i).params, 1, []);
-    previousParams = reshape(branch(i - 1).params, 1, []);
-
-    if any(~isfinite(currentParams)) || ~isfinite(branch(i).period) || ~isfinite(branch(i).amplitude)
-        keep(i:end) = false;
-        break
-    end
-
-    paramJump = abs(currentParams - previousParams);
-    if any(paramJump > maxParamJump) || abs(branch(i).period - branch(i - 1).period) > maxPeriodJump
-        keep(i:end) = false;
-        break
-    end
-end
-
-branch = branch(keep);
 end
