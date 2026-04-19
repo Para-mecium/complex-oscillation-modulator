@@ -1,62 +1,126 @@
-function data = build_fig3b_data(cfg)
-if nargin < 1
-    cfg = struct();
-end
-flexmod.ensure_paths();
-cfg = flexmod.merge_config(default_config(), cfg);
+clear
+clc
 
-model = flexmod.build_model(cfg);
-I1Values = cfg.grid.I1Values;
-ETValues = cfg.grid.ETValues;
+%% Paths
+scriptDir = fileparts(mfilename('fullpath'));
+repoDir = fileparts(scriptDir);
+dataDir = fullfile(scriptDir, 'data', 'fig3b');
+outputFile = fullfile(dataDir, 'fig3b_base_model_data.mat');
 
+addpath(repoDir);
+addpath(scriptDir);
+addpath(fullfile(repoDir, 'PO_extract'));
+addpath(genpath(fullfile(repoDir, 'MatCont7p6')));
+mkdir(dataDir);
+
+%% Base model for Fig. 3b
+initialState = [1; 0];
+
+I1Values = 0.8:0.1:2.0;
+ETValues = 0.6:0.2:2.4;
+
+fixedETForI1Slice = 1;
+fixedI1ForETSlice = 1;
+
+representativeI1 = 1;
+representativeETValues = [0.9, 1.2, 1.5];
+
+%% Periodic-orbit extraction settings
+singleTimeSpan = 1600;
+maxWindows = 3;
+solverTol = struct('RelTol', 1e-6, 'AbsTol', 1e-9);
+
+orbitOptions = struct();
+orbitOptions.solver_name = 'ode45';
+orbitOptions.single_timespan = singleTimeSpan;
+orbitOptions.max_windows = maxWindows;
+orbitOptions.event = 1;
+orbitOptions.solver_tol = solverTol;
+orbitOptions.minCrossings = 6;
+orbitOptions.transientFraction = 0.5;
+orbitOptions.samplesPerCycle = 400;
+orbitOptions.extractNumPoints = 500;
+
+%% Scan the (I1, ET) grid
 periodGrid = NaN(numel(ETValues), numel(I1Values));
 amplitudeGrid = NaN(numel(ETValues), numel(I1Values));
+gridHasOrbit = false(numel(ETValues), numel(I1Values));
+
 for i = 1:numel(I1Values)
     for j = 1:numel(ETValues)
-        disp(['computing: (' num2str(i) ',' num2str(j) ')...'])
-        orbit = flexmod.find_orbit(model, [I1Values(i), ETValues(j)], cfg, cfg.initialState);
-        if orbit.success
-            periodGrid(j, i) = orbit.period;
-            amplitudeGrid(j, i) = orbit.amplitude;
+        params = [I1Values(i), ETValues(j)];
+        fprintf('Grid point %d/%d, %d/%d: I1 = %.2f, ET = %.2f\n', ...
+            i, numel(I1Values), j, numel(ETValues), params(1), params(2));
+
+        result = flexmod_forward_orbit(params, initialState, struct( ...
+            'systemName', 'base', ...
+            'poOptions', orbitOptions));
+
+        gridHasOrbit(j, i) = result.success;
+        if result.success
+            periodGrid(j, i) = result.features.period;
+            amplitudeGrid(j, i) = result.features.state.amplitude(2);
         end
     end
 end
 
-fixedET = model.defaultParams(2);
-varyI1 = build_single_parameter_series(model, cfg, [I1Values(:), fixedET * ones(numel(I1Values), 1)], 'I1');
-fixedI1 = cfg.grid.fixedI1;
-varyET = build_single_parameter_series(model, cfg, [fixedI1 * ones(numel(ETValues), 1), ETValues(:)], 'ET');
+%% Sweep I1 with ET fixed at 1
+I1SliceValues = I1Values(:);
+I1SlicePeriods = NaN(numel(I1SliceValues), 1);
+I1SliceAmplitudes = NaN(numel(I1SliceValues), 1);
+I1SliceHasOrbit = false(numel(I1SliceValues), 1);
 
-seriesOrbits = cell(1, numel(cfg.grid.seriesET));
-for i = 1:numel(cfg.grid.seriesET)
-    seriesOrbits{i} = flexmod.find_orbit(model, [cfg.grid.fixedI1, cfg.grid.seriesET(i)], cfg, cfg.initialState);
-    if seriesOrbits{i}.success
-        seriesOrbits{i} = flexmod.shift_cycle_to_max(seriesOrbits{i});
+for i = 1:numel(I1SliceValues)
+    params = [I1SliceValues(i), fixedETForI1Slice];
+    result = flexmod_forward_orbit(params, initialState, struct( ...
+        'systemName', 'base', ...
+        'poOptions', orbitOptions));
+
+    I1SliceHasOrbit(i) = result.success;
+    if result.success
+        I1SlicePeriods(i) = result.features.period;
+        I1SliceAmplitudes(i) = result.features.state.amplitude(2);
     end
 end
 
-data = struct();
-data.I1Values = I1Values;
-data.ETValues = ETValues;
-data.periodGrid = periodGrid;
-data.amplitudeGrid = amplitudeGrid;
-data.varyI1 = varyI1;
-data.varyET = varyET;
-data.seriesET = cfg.grid.seriesET;
-data.seriesOrbits = seriesOrbits;
-end
+%% Sweep ET with I1 fixed at 1
+ETSliceValues = ETValues(:);
+ETSlicePeriods = NaN(numel(ETSliceValues), 1);
+ETSliceAmplitudes = NaN(numel(ETSliceValues), 1);
+ETSliceHasOrbit = false(numel(ETSliceValues), 1);
 
-function series = build_single_parameter_series(model, cfg, paramPairs, varyingName)
-n = size(paramPairs, 1);
-period = NaN(n, 1);
-amplitude = NaN(n, 1);
-for i = 1:n
-    orbit = flexmod.find_orbit(model, paramPairs(i, :), cfg, cfg.initialState);
-    if orbit.success
-        period(i) = orbit.period;
-        amplitude(i) = orbit.amplitude;
+for i = 1:numel(ETSliceValues)
+    params = [fixedI1ForETSlice, ETSliceValues(i)];
+    result = flexmod_forward_orbit(params, initialState, struct( ...
+        'systemName', 'base', ...
+        'poOptions', orbitOptions));
+
+    ETSliceHasOrbit(i) = result.success;
+    if result.success
+        ETSlicePeriods(i) = result.features.period;
+        ETSliceAmplitudes(i) = result.features.state.amplitude(2);
     end
 end
 
-series = struct('params', paramPairs, 'period', period, 'amplitude', amplitude, 'varyingName', varyingName);
+%% Representative time traces at I1 = 1
+representativeOrbits = cell(1, numel(representativeETValues));
+
+for i = 1:numel(representativeETValues)
+    params = [representativeI1, representativeETValues(i)];
+    result = flexmod_forward_orbit(params, initialState, struct( ...
+        'systemName', 'base', ...
+        'poOptions', orbitOptions, ...
+        'shiftToYMax', true));
+
+    representativeOrbits{i} = result.orbit;
 end
+
+%% Save data
+save(outputFile, ...
+    'I1Values', 'ETValues', ...
+    'periodGrid', 'amplitudeGrid', 'gridHasOrbit', ...
+    'I1SliceValues', 'fixedETForI1Slice', 'I1SlicePeriods', 'I1SliceAmplitudes', 'I1SliceHasOrbit', ...
+    'ETSliceValues', 'fixedI1ForETSlice', 'ETSlicePeriods', 'ETSliceAmplitudes', 'ETSliceHasOrbit', ...
+    'representativeI1', 'representativeETValues', 'representativeOrbits');
+
+fprintf('Saved data: %s\n', outputFile);
