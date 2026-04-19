@@ -1,26 +1,26 @@
-function fig = draw_extended_fig2d()
+function fig = draw_etd_fig2d()
 scriptDir = fileparts(mfilename('fullpath'));
-dataFile = fullfile(scriptDir, 'extended_fig2d_sde_data.mat');
+dataFile = fullfile(scriptDir, 'sde_distribution.mat');
 
 if ~isfile(dataFile)
-    generate_extended_fig2d_data();
+    generate_extended_fig2d_data
 end
 
 data = load(dataFile);
-beforeColor = [0.2, 0.45, 0.85];
-afterColor = [0.92, 0.74, 0.16];
+initColor = [0.2, 0.45, 0.85];
+modulatedColor = [0.92, 0.74, 0.16];
 
 fig = figure('Color', 'w', 'Position', [120, 120, 360, 420]);
 tiled = tiledlayout(fig, 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 ax = nexttile(tiled, 1);
-draw_hist_panel(ax, data.before.distribution.minS, data.after.distribution.minS, ...
-    beforeColor, afterColor, 'min SIR2 protein (a.u.)');
+draw_hist_panel(ax, data.init.distribution.minS, data.modulated.distribution.minS, ...
+    initColor, modulatedColor, 'min SIR2 protein (a.u.)');
 
 ax = nexttile(tiled, 2);
-draw_hist_panel(ax, data.before.distribution.minH, data.after.distribution.minH, ...
-    beforeColor, afterColor, 'min HAP4 protein (a.u.)');
-legend(ax, {'Before', 'After'}, 'Location', 'best', 'Box', 'off')
+draw_hist_panel(ax, data.init.distribution.minH, data.modulated.distribution.minH, ...
+    initColor, modulatedColor, 'min HAP4 protein (a.u.)');
+legend(ax, {'Init', 'Modulated'}, 'Location', 'best', 'Box', 'off')
 end
 
 function draw_hist_panel(ax, beforeValues, afterValues, beforeColor, afterColor, xLabelText)
