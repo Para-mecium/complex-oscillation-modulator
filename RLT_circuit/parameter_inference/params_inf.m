@@ -18,7 +18,7 @@ params = Parameters;
 t = TS{1};
 TS_var = TS{2};
 TS_obs = [];
-M = 75; % truncation order
+M = 50; % truncation order
 cd ../
 derivatives = build_symbolic_derivatives(sys, obs, numel(params));
 
