@@ -1,8 +1,8 @@
 clear
 clc
 %%
-selectedNoiseLevels = [0.01 0.02];
-selectedFiles = [100];
+selectedNoiseLevels = [0.01 0.02 0.05];
+selectedFiles = 1:100;
 %%
 scriptDir = fileparts(mfilename('fullpath'));
 parameterInferenceDir = fileparts(scriptDir);
@@ -54,12 +54,16 @@ for noiseIdx = 1:numel(selectedNoiseLevels)
     noiseLevelDirName = ['noise_level_' strrep(num2str(noiseLevel), '.', 'p')];
     sourceNoiseDir = fullfile(inputDir, noiseLevelDirName);
     targetNoiseDir = fullfile(outputDir, noiseLevelDirName);
+    summaryFile = fullfile(targetNoiseDir, 'modulation_summary.mat');
+    sampleSuccess = false(1, numel(selectedFiles));
+    identifiedParameters = cell(1, numel(selectedFiles));
 
     if ~isfolder(targetNoiseDir)
         mkdir(targetNoiseDir);
     end
 
-    for seedIdx = selectedFiles
+    for fileIdx = 1:numel(selectedFiles)
+        seedIdx = selectedFiles(fileIdx);
         fileName = sprintf('initData_%03d.mat', seedIdx);
         targetData = load(fullfile(sourceNoiseDir, fileName));
 
@@ -84,7 +88,7 @@ for noiseIdx = 1:numel(selectedNoiseLevels)
             'derivatives', derivatives, 'continuationOptions', continuationOptions);
         Modtask.isPsiUpdated = true;
         Modtask.needLog = false;
-        % Modtask.verbose = false;
+        Modtask.verbose = false;
 
         Modtask.fit();
         Modtask.step();
@@ -120,8 +124,15 @@ for noiseIdx = 1:numel(selectedNoiseLevels)
         seed = targetData.seed;
         save(saveFile, 'success', 'Parameters', 'TS', 'noiseLevel', 'seed', 'reason');
 
+        sampleSuccess(fileIdx) = success;
+        identifiedParameters{fileIdx} = Parameters;
+
         msg = sprintf('Processed %s: success=%d, lambda=%.6g, output=%s', ...
             fileName, success, finalLambda, saveFile);
         fprintf('%s\n', msg);
     end
+
+    successRate = nnz(sampleSuccess) / numel(sampleSuccess);
+    save(summaryFile, 'successRate', 'sampleSuccess', 'identifiedParameters', ...
+        'noiseLevel', 'selectedFiles');
 end
