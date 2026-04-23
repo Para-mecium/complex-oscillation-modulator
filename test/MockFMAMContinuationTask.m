@@ -56,14 +56,14 @@ classdef MockFMAMContinuationTask < FMAM_ODE
                 otherwise
                     error('MockFMAMContinuationTask only supports p_Psi and varPhiMax test targets.')
             end
-            obj.loadSolverView(view);
+            obj.loadSolverView(view, struct('refreshPsiModeReferences', false));
         end
 
         function forceInvalidPsi(obj)
             view = obj.exportSolverView();
             view.p_Psi(:) = 0;
             view.q_Psi(:) = 0;
-            obj.loadSolverView(view);
+            obj.loadSolverView(view, struct('refreshPsiModeReferences', false));
         end
 
         function result = mockResult(~,converged,iterations,message)

@@ -88,6 +88,49 @@ function testOneIterMatchesAssemblyResidualForUpdatedPsiMode(testCase)
     verifyOneIterMatchesAssemblyResidual(testCase, task);
 end
 
+function testFrozenPsiPhaseConstraintRowMatchesAnalyticReference(testCase)
+    task = make_current_target_task(struct('prop', 'varAmp', 'idx', 1), {}, ...
+        struct('name', 'var', 'idx', 1), false);
+    ctx = make_assembly_context(task);
+    ctx.p_var_phase_ref = ctx.p_var;
+    ctx.q_var_phase_ref = ctx.q_var;
+    ctx.p_var(3, 1) = ctx.p_var(3, 1) + 1e-2;
+    ctx.q_var(1, 2) = ctx.q_var(1, 2) - 2e-2;
+
+    [A, res, indexMap] = assemble_newton_linear_system(ctx);
+    rowIdx = frozen_phase_constraint_row_index(size(A, 1));
+    [expectedRow, expectedResidual] = frozen_phase_constraint_from_context(ctx, indexMap, size(A, 2));
+
+    verifyEqual(testCase, A(rowIdx, :), expectedRow, 'AbsTol', 1e-12);
+    verifyEqual(testCase, res(rowIdx), expectedResidual, 'AbsTol', 1e-12);
+    verifyEqual(testCase, norm(A(rowIdx, :), 2), 1, 'AbsTol', 1e-12);
+    verifyEqual(testCase, A(rowIdx, indexMap.params(:)), zeros(1, numel(indexMap.params)), 'AbsTol', 1e-12);
+    verifyEqual(testCase, A(rowIdx, indexMap.p_Psi(:)), zeros(1, numel(indexMap.p_Psi)), 'AbsTol', 1e-12);
+    verifyEqual(testCase, A(rowIdx, indexMap.q_Psi(:)), zeros(1, numel(indexMap.q_Psi)), 'AbsTol', 1e-12);
+end
+
+function testFrozenPsiPhaseConstraintTargetsTangent(testCase)
+    varPV = struct('name', 'var', 'idx', 1);
+    [varReferenceView, ~] = make_reference_views({}, 1, 3, varPV);
+    varTask = make_task_fixture(struct('prop', 'p_Psi', 'idx', 1), {}, ...
+        varPV, false);
+    obs = {@observable_x1};
+    obsPV = struct('name', 'obs', 'idx', 1);
+    [obsReferenceView, ~] = make_reference_views(obs, 1, 3, obsPV);
+    obsTask = make_task_fixture(struct('prop', 'obsAmp', 'idx', 1), obs, ...
+        obsPV, false);
+
+    varCtx = make_assembly_context(varTask);
+    varCtx.p_var_phase_ref = varReferenceView.p_var;
+    varCtx.q_var_phase_ref = varReferenceView.q_var;
+    verifyFrozenPhaseConstraintTargetsReferenceTangent(testCase, varCtx);
+
+    obsCtx = make_assembly_context(obsTask);
+    obsCtx.p_var_phase_ref = obsReferenceView.p_var;
+    obsCtx.q_var_phase_ref = obsReferenceView.q_var;
+    verifyFrozenPhaseConstraintTargetsReferenceTangent(testCase, obsCtx);
+end
+
 function testAssemblyFallbackTargetContextUsesTaskDiscretization(testCase)
     sys = make_harmonic_system();
     obs = {@observable_nonlinear_mix};
@@ -150,7 +193,7 @@ function verifyOneIterMatchesAssemblyResidual(testCase, task)
     verifyEqual(testCase, task.items_per_curr, acceptedTarget, 'AbsTol', 1e-12);
 end
 
-function task = make_task_fixture(itemTemplate, obs, PV, isPsiUpdated)
+function task = make_task_fixture(itemTemplate, obs, PV, psiUpdateMode)
     sys = make_harmonic_system();
     derivatives = build_symbolic_derivatives(sys, obs, 1);
     [solverView, derived] = make_reference_views(obs, 1, 3, PV);
@@ -164,12 +207,13 @@ function task = make_task_fixture(itemTemplate, obs, PV, isPsiUpdated)
 
     task = FMAM_ODE(sys, obs, solverView, item, 1, delta, 1e-6, ...
         'derivatives', derivatives);
-    task.isPsiUpdated = isPsiUpdated;
+    task.psiUpdateMode = psiUpdateMode;
+    task.refreshPsiModeReferences();
     task.autostepsize();
     task.perturb();
 end
 
-function task = make_current_target_task(itemTemplate, obs, PV, isPsiUpdated)
+function task = make_current_target_task(itemTemplate, obs, PV, psiUpdateMode)
     sys = make_harmonic_system();
     derivatives = build_symbolic_derivatives(sys, obs, 1);
     [solverView, derived] = make_reference_views(obs, 1, 3, PV);
@@ -181,7 +225,8 @@ function task = make_current_target_task(itemTemplate, obs, PV, isPsiUpdated)
 
     task = FMAM_ODE(sys, obs, solverView, item, 1, 1e-3, 1e-6, ...
         'derivatives', derivatives);
-    task.isPsiUpdated = isPsiUpdated;
+    task.psiUpdateMode = psiUpdateMode;
+    task.refreshPsiModeReferences();
 end
 
 function verifyTargetRowsMatchSharedHelper(testCase, ctx, A, res, indexMap)
@@ -235,11 +280,7 @@ function verifyExtremaGuardRow(testCase, row, residual, phiIdx, isActive)
 end
 
 function rowIdx = first_extrema_row_index(ctx)
-    rowIdx = ctx.dimVar * (2 * ctx.truncationOrder + 1);
-    if ~ctx.isPsiUpdated
-        rowIdx = rowIdx + 1;
-    end
-    rowIdx = rowIdx + 1;
+    rowIdx = ctx.dimVar * (2 * ctx.truncationOrder + 1) + 1;
 end
 
 function rowIdx = first_target_row_index(ctx)
@@ -340,10 +381,23 @@ function ctx = make_assembly_context(task)
     ctx.items_perturb = task.items_perturb;
     ctx.items_controlled = task.items_controlled;
     ctx.targetCurr = task.items_per_curr;
-    ctx.isPsiUpdated = task.isPsiUpdated;
+    ctx.psiUpdateMode = task.psiUpdateMode;
     ctx.p_Psi_init = solverView.p_Psi;
     ctx.q_Psi_init = solverView.q_Psi;
+    ctx.p_var_phase_ref = solverView.p_var;
+    ctx.q_var_phase_ref = solverView.q_var;
     ctx.targetRuleCtx = make_target_rule_context(solverView, derived, task.obs, ctx.dimVar);
+end
+
+function verifyFrozenPhaseConstraintTargetsReferenceTangent(testCase, ctx)
+    [A, ~, indexMap] = assemble_newton_linear_system(ctx);
+    rowIdx = frozen_phase_constraint_row_index(size(A, 1));
+    tangent = zeros(size(A, 2), 1);
+    tangent(indexMap.p_var(:)) = frozen_phase_tangent_coefficients( ...
+        ctx.p_var_phase_ref, ctx.q_var_phase_ref, 'p');
+    tangent(indexMap.q_var(:)) = frozen_phase_tangent_coefficients( ...
+        ctx.p_var_phase_ref, ctx.q_var_phase_ref, 'q');
+    verifyGreaterThan(testCase, A(rowIdx, :) * tangent, 0);
 end
 
 function verifyNewtonHistoryShape(testCase, history)
@@ -397,6 +451,10 @@ function rowIdx = observable_pv_gauge_row_indices(ctx, numRows)
     rowIdx = (numRows - (2 * M - 1) + 1):numRows;
 end
 
+function rowIdx = frozen_phase_constraint_row_index(numRows)
+    rowIdx = numRows;
+end
+
 function rowIdx = observable_extrema_row_index(ctx, obsIdx, kind)
     rowIdx = first_extrema_row_index(ctx) + 2 * ctx.dimVar + 2 * (obsIdx - 1);
     if strcmp(kind, 'min')
@@ -443,6 +501,46 @@ function view = solver_view_from_context(ctx)
         'obsPhiMax', ctx.obsPhiMax, ...
         'obsPhiMin', ctx.obsPhiMin, ...
         'PV', ctx.PV);
+end
+
+function [row, residual] = frozen_phase_constraint_from_context(ctx, indexMap, numUnknown)
+    row = zeros(1, numUnknown);
+    coe_p_var = zeros(size(ctx.p_var));
+    coe_q_var = zeros(size(ctx.q_var));
+
+    M = size(ctx.q_var_phase_ref, 1);
+    if M > 0
+        harmonics = reshape(1:M, [], 1);
+        coe_p_var(2:end, :) = harmonics .* ctx.q_var_phase_ref;
+        coe_q_var = -harmonics .* ctx.p_var_phase_ref(2:end, :);
+    end
+
+    scale = norm([coe_p_var(:); coe_q_var(:)], 2);
+    row(indexMap.p_var(:)) = coe_p_var(:) / scale;
+    row(indexMap.q_var(:)) = coe_q_var(:) / scale;
+    residual = -(sum(sum(coe_p_var .* (ctx.p_var - ctx.p_var_phase_ref))) + ...
+        sum(sum(coe_q_var .* (ctx.q_var - ctx.q_var_phase_ref)))) / scale;
+end
+
+function coeff = frozen_phase_tangent_coefficients(p_var_ref, q_var_ref, blockName)
+    M = size(q_var_ref, 1);
+    switch blockName
+        case 'p'
+            coeff = zeros(size(p_var_ref));
+            if M > 0
+                harmonics = reshape(1:M, [], 1);
+                coeff(2:end, :) = harmonics .* q_var_ref;
+            end
+        case 'q'
+            coeff = zeros(size(q_var_ref));
+            if M > 0
+                harmonics = reshape(1:M, [], 1);
+                coeff = -harmonics .* p_var_ref(2:end, :);
+            end
+        otherwise
+            error('unsupported block %s', blockName);
+    end
+    coeff = coeff(:);
 end
 
 function gauge = observable_primary_gauge(view, obs, PV, L)

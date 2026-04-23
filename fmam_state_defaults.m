@@ -11,7 +11,8 @@ classdef fmam_state_defaults
                 'assemblySampleCount', fmam_state_defaults.assemblySampleCount, ...
                 'reconstruction', struct( ...
                     'timeResampleCount', fmam_state_defaults.timeResampleCount, ...
-                    'phaseSampleCount', fmam_state_defaults.phaseSampleCount));
+                    'phaseSampleCount', fmam_state_defaults.phaseSampleCount, ...
+                    'phaseMode', 'primaryCosine'));
         end
 
         function discretization = normalizeDiscretization(discretization)
@@ -67,7 +68,7 @@ classdef fmam_state_defaults
                     'reconstruction must be a struct.')
             end
 
-            allowedFields = {'timeResampleCount', 'phaseSampleCount'};
+            allowedFields = {'timeResampleCount', 'phaseSampleCount', 'phaseMode'};
             fieldNames = fieldnames(reconstruction);
             for i = 1:numel(fieldNames)
                 if ~ismember(fieldNames{i}, allowedFields)
@@ -87,6 +88,20 @@ classdef fmam_state_defaults
             validateattributes(merged.phaseSampleCount, {'numeric'}, ...
                 {'scalar', 'integer', 'positive', 'finite'}, ...
                 'fmam_state_defaults', 'reconstruction.phaseSampleCount');
+            if ~ischar(merged.phaseMode) && ~(isstring(merged.phaseMode) && isscalar(merged.phaseMode))
+                error('fmam_state_defaults:InvalidReconstruction', ...
+                    'reconstruction.phaseMode must be ''primaryCosine'' or ''linearTime''.')
+            end
+            phaseMode = char(merged.phaseMode);
+            switch lower(phaseMode)
+                case 'primarycosine'
+                    merged.phaseMode = 'primaryCosine';
+                case 'lineartime'
+                    merged.phaseMode = 'linearTime';
+                otherwise
+                    error('fmam_state_defaults:InvalidReconstruction', ...
+                        'reconstruction.phaseMode must be ''primaryCosine'' or ''linearTime''.')
+            end
 
             merged.timeResampleCount = double(merged.timeResampleCount);
             merged.phaseSampleCount = double(merged.phaseSampleCount);

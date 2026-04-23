@@ -67,12 +67,10 @@ because the constant Fourier mode of `Psi` is the average value of `dt/dphi`.
    - `[]` becomes `{}`;
    - a cell input is reshaped to a row cell array.
 2. Normalize `t` and `Params` to column/row vectors.
-3. Call `normalizePeriodicInputs(...)`.
-   - shift the input time axis so it starts at zero;
-   - if the sampled orbit includes a repeated periodic endpoint, drop the last sample.
+3. Shift the input time axis so it starts at zero.
 4. Validate the inputs with `validateInputs(...)`.
 5. Evaluate observables on the sampled orbit with `getObs(...)`.
-6. Call `fourierCoeffs(...)` to build the FMAM phase representation.
+6. Call `fmam_state_ops.buildSolverViewFromTrajectory(...)` to build the FMAM phase representation.
 7. Store:
    - the Fourier coefficients;
    - the primary-variable cosine parameters `a` and `b`;
@@ -89,39 +87,52 @@ because the constant Fourier mode of `Psi` is the average value of `dt/dphi`.
 Compared with the older code path, `state` now enforces a clearer input contract:
 
 - `t` may start at any origin; the constructor internally shifts it to zero.
-- a repeated periodic endpoint is accepted and trimmed automatically.
-- `t` must be strictly increasing after trimming.
+- a repeated periodic endpoint is accepted; reconstruction takes the period from the shifted `t(end)` before dropping the resampled endpoint.
+- `t` must be strictly increasing.
 - `TS_var` must match the length of `t` and contain only finite values.
 - the period span `t(end)` after normalization must be positive.
 - `PV` must name a valid state or observable index.
 
-### 2.4 What `fourierCoeffs(...)` does
+### 2.4 What `reconstructSolverCoefficients(...)` does
 
 This is the key preprocessing step.
 
-1. Normalize the input time vector again to `t - t(1)`.
-2. Define the period as `T = t(end)`, which is now the time span of one period after normalization.
-3. Resample the orbit and observables onto a uniform time grid.
-4. Extract the chosen primary variable `X`.
-5. Rotate the sampled orbit so the primary variable starts at its maximum.
-6. Estimate
+The reconstruction is selected by `discretization.reconstruction.phaseMode`:
+
+- `primaryCosine` is the default legacy FMAM phase construction.
+- `linearTime` uses the native physical-time phase.
+
+Both modes first define the period as `T = t(end)` after shifting the input time axis to start at zero. The orbit and observables are then resampled on the closed physical-time interval `[0,T]`, and the repeated resampled endpoint is dropped before FFT projection.
+
+In `primaryCosine` mode, reconstruction then:
+
+1. Extracts the chosen primary variable `X`.
+2. Rotates the sampled orbit so the primary variable starts at its maximum.
+3. Estimates
    - `a = (max(X)-min(X))/2`
    - `b = (max(X)+min(X))/2`
-7. Split the primary waveform into two usable branches:
+4. Splits the primary waveform into two usable branches:
    - max-to-min branch `1:I2`
    - min-to-max branch `I2:end`
-8. Match `a*cos(phi)+b` against those two branches to build a phase-to-time map `t(phi)`.
-9. Differentiate `t(phi)` with a finite-difference matrix `Atrans` to obtain sampled `Psi(phi)`.
-10. Interpolate the state and observable samples onto the induced `phi` grid.
-11. FFT-project `Psi` to order `M-1`, and states/observables to order `M`.
-12. Enforce the primary-variable normalization:
+5. Matches `a*cos(phi)+b` against those two branches to build a phase-to-time map `t(phi)`.
+6. Differentiates `t(phi)` with a finite-difference matrix `Atrans` to obtain sampled `Psi(phi)`.
+7. Interpolates the state and observable samples onto the induced `phi` grid.
+8. FFT-projects `Psi` to order `M-1`, and states/observables to order `M`.
+9. Enforces the primary-variable normalization:
    - if `PV` is a state variable, its Fourier series is forced to `b + a cos(phi)`;
    - if `PV` is an observable, the chosen observable is forced to have only the first cosine mode.
-13. Validate the time map:
+10. Validates the time map:
    - sampled `Psi(phi)` must stay finite and strictly positive on the sampling grid;
    - exact interval increments from integrating `Psi` over each phase cell must also stay strictly positive.
 
 If the primary waveform does not admit a usable max-to-min and min-to-max branch, the code raises `state:InvalidPrimaryWaveform`.
+
+In `linearTime` mode:
+
+1. `phi = 2*pi*t/T` is used directly through the uniform physical-time resampling.
+2. `Psi(phi) = T/(2*pi)`, so only `p_Psi(1)` is nonzero.
+3. State variables and observables are FFT-projected directly from the resampled physical-time data.
+4. `PV` is retained in the solver view but does not force any primary-variable cosine normalization.
 
 ### 2.5 Dependent quantities
 
@@ -135,7 +146,7 @@ If the primary waveform does not admit a usable max-to-min and min-to-max branch
 
 Important detail:
 
-- `Atrans` still exists and is used in preprocessing to estimate sampled `Psi` from `t(phi)`.
+- a local `Atrans` finite-difference matrix is still used in `primaryCosine` preprocessing to estimate sampled `Psi` from `t(phi)`.
 - but the runtime `t` property is no longer obtained by solving an inverse finite-difference system.
 - instead, `get.t` first checks sampled `Psi > 0`, then builds time increments from exact trigonometric integrals with `Trintegration(...)`.
 
@@ -143,7 +154,7 @@ This avoids the old inconsistency where a finite-difference reconstruction of `t
 
 ### 2.6 Time-map invariants
 
-`state` now exposes three related pieces of logic:
+`state` exposes `assertTimeMapInvariant()` for compatibility paths. The lower-level checks live in `fmam_state_ops`:
 
 - `assertPositivePsi(...)`: sampled `Psi(phi)` must remain finite and strictly positive.
 - `assertPositiveTimeIncrements(...)`: exact interval integrals of `Psi` over the phase grid must remain finite and strictly positive.
@@ -151,7 +162,7 @@ This avoids the old inconsistency where a finite-difference reconstruction of `t
 
 These invariants are enforced:
 
-- during preprocessing in `fourierCoeffs(...)`;
+- during preprocessing in `reconstructSolverCoefficients(...)`;
 - during `refreshDerivedState()`;
 - when `t` is requested.
 
@@ -159,7 +170,7 @@ They are not currently enforced inside the inner Newton loop of `FMAM_ODE.fit()`
 
 ### 2.7 Derived orbit properties
 
-`updateVar2()` and `updateObs2()` compute:
+`refreshDerivedState()` computes the full derived state, while the legacy `updateVar2()` helper recomputes variable-only extrema for scripts that still call it. These derived quantities include:
 
 - maximum phases: `varPhiMax`, `obsPhiMax`
 - minimum phases: `varPhiMin`, `obsPhiMin`
@@ -178,7 +189,7 @@ Phase differences are computed in physical time by integrating `Psi` between ext
 
 ### 2.8 `p_var_origin` and `q_var_origin`
 
-`updateFCOrigin()` computes a separate equal-time Fourier description of the orbit:
+`buildDerivedView(...)` computes a separate equal-time Fourier description of the orbit:
 
 - it uses the current `t` grid and reconstructed `TS_var`;
 - it resamples each state variable onto an equal-time grid;
@@ -256,7 +267,7 @@ The constructor:
 5. validates the modulation setup;
 6. initializes:
    - `targetCurr` from the current orbit, via `initialTargetValues()`;
-   - `p_Psi_init`, `q_Psi_init` when `isPsiUpdated == false`;
+   - frozen `Psi` and phase-condition references when `psiUpdateMode == false`;
 7. uses Symbolic Toolbox to build:
    - Jacobians of every ODE component with respect to state variables and parameters;
    - first derivatives of observables;
@@ -405,9 +416,10 @@ For each entry in `items_perturb`, the solver adds one linearized equation for t
 
 The code removes the phase/gauge freedom in one of two ways:
 
-- `isPsiUpdated == false`:
-  higher Fourier modes of `Psi` are constrained to stay at their initial values.
-- `isPsiUpdated == true`:
+- `psiUpdateMode == false`:
+  higher Fourier modes of `Psi` are constrained to stay at their frozen reference values,
+  and one normalized phase condition is enforced against the phase reference.
+- `psiUpdateMode == true`:
   the primary-variable normalization is enforced instead.
   - if `PV` is a state variable, higher harmonics and sine modes of that state are forced to zero;
   - if `PV` is an observable, the corresponding observable normalization is enforced through observable derivatives.

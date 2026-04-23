@@ -48,7 +48,8 @@ errBound = 1e-6;
 
 Modtask = FMAM_ODE(sys,[],StateView,items_per,items_controlled,max_stepsize,errBound, ...
     'derivatives', derivatives);
-Modtask.isPsiUpdated = true;
+Modtask.psiUpdateMode = true;
+Modtask.refreshPsiModeReferences();
 Modtask.needLog = true;
 %%
 tic
@@ -82,7 +83,8 @@ errBound = 1e-6;
 
 Modtask = FMAM_ODE(sys,[],StateView,items_per,items_controlled,max_stepsize,errBound, ...
     'derivatives', derivatives);
-Modtask.isPsiUpdated = true;
+Modtask.psiUpdateMode = true;
+Modtask.refreshPsiModeReferences();
 Modtask.needLog = true;
 
 tic

@@ -10,8 +10,8 @@ M = 75;
 seed = 1;
 rng(seed, 'twister');
 
-couplingType = 'synapse';
-G_scale = 0.1;
+couplingType = 'gap';
+G_scale = 0.05;
 G = G_scale * (2*randn(N, N)-1);
 
 % Fixed HH parameters.
@@ -28,7 +28,7 @@ Esyn0 = 0.0 * ones(N, 1);
 I0_vector = 120 * ones(N, 1);
 
 % Active parameters selected by name.
-active_param_names = {'I_1'};
+active_param_names = {'I_1','I_2'};
 
 % Shared initial state.
 V0 = 0.2;
@@ -44,7 +44,7 @@ targetScale2 = 4;
 orbitOptions = struct();
 orbitOptions.poOptions = struct( ...
     'solver_name', 'ode15s', ...
-    'single_timespan', 1000, ...
+    'single_timespan', 1200, ...
     'max_windows', 5, ...
     'event', 1, ...
     'solver_tol', struct('RelTol', 1e-6, 'AbsTol', 1e-9), ...
@@ -112,7 +112,9 @@ sys = build_hh_system(defaultParams, active_specs, N);
 derivatives = build_symbolic_derivatives(sys, obs, numel(params));
 
 PV = struct('name', 'var', 'idx', 1);
-State = state(obs, params, t, TS_var, M, PV);
+discretization = fmam_state_defaults.defaultDiscretization();
+discretization.reconstruction.phaseMode = 'linearTime';
+State = state(obs, params, t, TS_var, M, PV, 'discretization', discretization);
 StateView = fmam_state_ops.solverViewFromState(State);
 
 initialfeat = reshape(initialOrbitResult.features.state.amplitude, 1, []);
@@ -123,13 +125,13 @@ targetfeat = [ ...
 %     targetScale1 * initialfeat(1)];
 
 items_per = struct;
-items_per(1).prop = 'varAmp';
+items_per(1).prop = 'varMax';
 items_per(1).idx = 1;
-items_per(1).target = targetfeat(1);
+items_per(1).target = 40;
 
-items_per(2).prop = 'varAmp';
+items_per(2).prop = 'varMax';
 items_per(2).idx = 2;
-items_per(2).target = targetfeat(2);
+items_per(2).target = 32;
 
 % items_per(3).prop = 'varAmp';
 % items_per(3).idx = 3;
@@ -138,7 +140,8 @@ items_per(2).target = targetfeat(2);
 items_controlled = 1:numel(params);
 task = FMAM_ODE(sys, obs, StateView, items_per, items_controlled, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions,'newtonOptions',newtonOptions);
-task.isPsiUpdated = true;
+task.psiUpdateMode = false;
+task.refreshPsiModeReferences();
 task.needLog = need_path;
 
 %% Run modulation

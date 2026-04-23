@@ -66,7 +66,8 @@ continuationOptions = struct('initialLambdaStep', 0.01);
 task = FMAM_ODE(sys, obs, solverView, items_per, items_controlled, ...
     [], errBound, 'derivatives', derivatives, ...
     'continuationOptions', continuationOptions);
-task.isPsiUpdated = true;
+task.psiUpdateMode = true;
+task.refreshPsiModeReferences();
 
 task.fit();
 task.step();
@@ -132,7 +133,8 @@ if needPath
     taskPath = FMAM_ODE(sys, obs, solverView, items_per, items_controlled, ...
         [], errBound, 'derivatives', derivatives, ...
         'continuationOptions', continuationOptionsPath);
-    taskPath.isPsiUpdated = true;
+    taskPath.psiUpdateMode = true;
+    taskPath.refreshPsiModeReferences();
     taskPath.needLog = true;
     taskPath.fit();
     params_start = reshape(taskPath.exportSolverView().params, 1, []);

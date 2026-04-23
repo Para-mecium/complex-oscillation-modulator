@@ -86,7 +86,8 @@ for noiseIdx = 1:numel(selectedNoiseLevels)
 
         Modtask = FMAM_ODE(sys, obs, StateView, items_per, items_controlled, [], errBound, ...
             'derivatives', derivatives, 'continuationOptions', continuationOptions);
-        Modtask.isPsiUpdated = true;
+        Modtask.psiUpdateMode = true;
+        Modtask.refreshPsiModeReferences();
         Modtask.needLog = false;
         Modtask.verbose = false;
 

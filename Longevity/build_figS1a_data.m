@@ -45,7 +45,8 @@ items_controlled = controlledIdx;
 errBound = 1e-6;
 Modtask = FMAM_ODE(sys, obs, StateView, items_per, items_controlled, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-Modtask.isPsiUpdated = true;
+Modtask.psiUpdateMode = true;
+Modtask.refreshPsiModeReferences();
 Modtask.needLog = needPath;
 
 %% Run FMAM continuation

@@ -55,6 +55,14 @@ function testConstructorRejectsUnknownNameValueOption(testCase)
         @() FMAM_ODE(sys, obs, solverView, items_per, 1, 0.25, 1e-6, ...
             'derivatives', derivatives, ...
             'unknownOption', 1), ...
+	        'FMAM_ODE:InvalidConstructorOption');
+end
+
+function testConstructorUsesPsiUpdateModeOptionOnly(testCase)
+    task = make_guardrail_task('psiUpdateMode', true);
+
+    verifyTrue(testCase, task.psiUpdateMode);
+    verifyError(testCase, @() make_guardrail_task('isPsiUpdated', true), ...
         'FMAM_ODE:InvalidConstructorOption');
 end
 
@@ -119,19 +127,18 @@ function testResidualIncludesObservablePrimaryGaugeViolation(testCase)
     verifyGreaterThan(testCase, residual(end), baselineGaugeResidual + 1e-3);
 end
 
-function testPsiUpdateModeAssignmentsRemainCompatible(testCase)
+function testPsiUpdateModeAssignmentsCaptureReferences(testCase)
     task = make_guardrail_task();
 
-    verifyFalse(testCase, task.isPsiUpdated);
+    verifyFalse(testCase, task.psiUpdateMode);
 
-    task.isPsiUpdated = true;
-    verifyTrue(testCase, task.isPsiUpdated);
+    task.psiUpdateMode = true;
+    task.refreshPsiModeReferences();
+    verifyTrue(testCase, task.psiUpdateMode);
 
-    task.setPsiUpdateMode(true);
-    verifyTrue(testCase, task.isPsiUpdated);
-
-    task.setPsiUpdateMode(false);
-    verifyFalse(testCase, task.isPsiUpdated);
+    task.psiUpdateMode = false;
+    task.refreshPsiModeReferences();
+    verifyFalse(testCase, task.psiUpdateMode);
     verifyEqual(testCase, psi_reference_residual(task), ...
         zeros(max(0,2 * task.truncationOrder - 2), 1), 'AbsTol', 1e-12);
 end
@@ -157,17 +164,58 @@ function testDisablePsiUpdateCapturesPsiReference(testCase)
     delta_p = [0; 0.125; -0.05];
     delta_q = [0.05; -0.125];
 
-    task.isPsiUpdated = true;
+    task.psiUpdateMode = true;
+    task.refreshPsiModeReferences();
     mutate_solver_view(task, @(view) apply_psi_delta(view, delta_p, delta_q));
 
-    task.isPsiUpdated = false;
-    verifyFalse(testCase, task.isPsiUpdated);
+    task.psiUpdateMode = false;
+    task.refreshPsiModeReferences();
+    verifyFalse(testCase, task.psiUpdateMode);
     verifyEqual(testCase, psi_reference_residual(task), ...
         zeros(max(0,2 * task.truncationOrder - 2), 1), 'AbsTol', 1e-12);
 
-    task.isPsiUpdated = false;
+    task.psiUpdateMode = false;
+    task.refreshPsiModeReferences();
     verifyEqual(testCase, psi_reference_residual(task), ...
         zeros(max(0,2 * task.truncationOrder - 2), 1), 'AbsTol', 1e-12);
+end
+
+function testLoadSolverViewRefreshesFrozenReferencesByDefault(testCase)
+    task = make_guardrail_task();
+    delta_p = [0; 0.125; -0.05];
+    delta_q = [0.05; -0.125];
+    view = apply_psi_delta(task.exportSolverView(), delta_p, delta_q);
+
+    task.loadSolverView(view);
+
+    verifyEqual(testCase, psi_reference_residual(task), ...
+        zeros(max(0,2 * task.truncationOrder - 2), 1), 'AbsTol', 1e-12);
+end
+
+function testLoadSolverViewCanPreserveFrozenReferences(testCase)
+    task = make_guardrail_task();
+    delta_p = [0; 0.125; -0.05];
+    delta_q = [0.05; -0.125];
+    view = apply_psi_delta(task.exportSolverView(), delta_p, delta_q);
+
+    task.loadSolverView(view, struct('refreshPsiModeReferences', false));
+
+    verifyEqual(testCase, psi_reference_residual(task), ...
+        -[delta_p(2:end); delta_q(:)], 'AbsTol', 1e-12);
+end
+
+function testFrozenPhaseResidualParticipatesInConvergence(testCase)
+    task = make_guardrail_task();
+    task.errBound = inf;
+    task.oneIter();
+
+    mutate_solver_view(task, @(view) with_field(view, 'p_var', ...
+        bump_matrix_entry(view.p_var, 3, 1, 5e-2)));
+    task.errBound = 1e-12;
+    result = task.oneIter();
+
+    verifyFalse(testCase, result.converged);
+    verifyGreaterThan(testCase, result.scalarError, task.errBound);
 end
 
 function testStructuralPropertiesCannotBeReboundAfterConstruction(testCase)
@@ -290,7 +338,8 @@ function task = make_observable_pv_guardrail_task()
 
     task = FMAM_ODE(sys, obs, solverView, item, 1, 0.25, 1e-6, ...
         'derivatives', derivatives);
-    task.isPsiUpdated = true;
+    task.psiUpdateMode = true;
+    task.refreshPsiModeReferences();
     task.needLog = false;
 end
 
@@ -331,7 +380,12 @@ function residual = psi_reference_residual(task)
     result = task.oneIter();
     M = task.truncationOrder;
     tailLength = max(0,2 * M - 2);
-    residual = result.linearResidual(end - tailLength + 1:end);
+    if tailLength == 0
+        residual = zeros(0, 1);
+        return
+    end
+    rowEnd = numel(result.linearResidual) - 1;
+    residual = result.linearResidual(rowEnd - tailLength + 1:rowEnd);
 end
 
 function restore_err_bound(task, errBound)

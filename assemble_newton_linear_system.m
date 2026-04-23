@@ -3,6 +3,8 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
 
     p_Psi_init_ = ctx.p_Psi_init;
     q_Psi_init_ = ctx.q_Psi_init;
+    p_var_phase_ref_ = ctx.p_var_phase_ref;
+    q_var_phase_ref_ = ctx.q_var_phase_ref;
 
     system = ctx.sys;
     observable = ctx.obs;
@@ -74,11 +76,6 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
 
         idxLastRow = idxLastRow + (2 * MVar + 1);
 
-        if ~ctx.isPsiUpdated && should_insert_frozen_psi_closure_row(ctx.PV, i)
-            A(idxLastRow + 1, idxCollum) = A_plus1(MVar + 2, :);
-            res(idxLastRow + 1) = res_plus1(MVar + 2);
-            idxLastRow = idxLastRow + 1;
-        end
     end
 
     for i = 1:N
@@ -187,7 +184,7 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
         idxLastRow = idxLastRow + 1;
     end
 
-    if ctx.isPsiUpdated
+    if ctx.psiUpdateMode
         PV = ctx.PV;
         if strcmpi(PV.name, 'var')
             idx_PV = PV.idx;
@@ -244,6 +241,12 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
             res(idxLastRow + (1:numFrozenSin)) = -(q_Psi - q_Psi_init_);
             idxLastRow = idxLastRow + numFrozenSin;
         end
+
+        [phaseRow, phaseResidual] = build_frozen_phase_condition_row( ...
+            indexMap, p_var, q_var, p_var_phase_ref_, q_var_phase_ref_, size(A, 2));
+        A(idxLastRow + 1, :) = phaseRow;
+        res(idxLastRow + 1) = phaseResidual;
+        idxLastRow = idxLastRow + 1;
     end
 
     if idxLastRow ~= size(A, 1)
@@ -252,12 +255,30 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
     end
 end
 
-function tf = should_insert_frozen_psi_closure_row(PV, eqIdx)
-    if strcmpi(PV.name, 'var')
-        tf = (eqIdx == PV.idx);
-    else
-        tf = (eqIdx == 1);
+function [row,residual] = build_frozen_phase_condition_row(indexMap, ...
+        p_var, q_var, p_var_ref, q_var_ref, numUnknown)
+    row = zeros(1, numUnknown);
+    coe_p_var = zeros(size(p_var));
+    coe_q_var = zeros(size(q_var));
+
+    M = size(q_var, 1);
+    if M > 0
+        harmonics = reshape(1:M, [], 1);
+        coe_p_var(2:end, :) = harmonics .* q_var_ref;
+        coe_q_var = -harmonics .* p_var_ref(2:end, :);
     end
+
+    scale = norm([coe_p_var(:); coe_q_var(:)], 2);
+    if ~(isfinite(scale) && scale > 0)
+        error('FMAM_ODE:InvalidFrozenPhaseReference', ...
+            'Frozen phase reference tangent must have a positive finite norm.');
+    end
+
+    row(indexMap.p_var(:)) = coe_p_var(:) / scale;
+    row(indexMap.q_var(:)) = coe_q_var(:) / scale;
+
+    residual = -(sum(sum(coe_p_var .* (p_var - p_var_ref))) + ...
+        sum(sum(coe_q_var .* (q_var - q_var_ref)))) / scale;
 end
 
 function targetCtx = build_target_rules_context(ctx)

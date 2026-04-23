@@ -61,7 +61,8 @@ seedSolverView = fmam_state_ops.solverViewFromState(seedState);
 %% Compute the marker point
 markerTask = FMAM_ODE(sys, obs, seedSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-markerTask.isPsiUpdated = true;
+markerTask.psiUpdateMode = true;
+markerTask.refreshPsiModeReferences();
 markerTask.needLog = false;
 
 markerTask.fit()

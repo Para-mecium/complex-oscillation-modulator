@@ -71,7 +71,8 @@ itemsPer(2).target = startTarget(2);
 
 startTask = FMAM_ODE(sys, obs, seedSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-startTask.isPsiUpdated = true;
+startTask.psiUpdateMode = true;
+startTask.refreshPsiModeReferences();
 startTask.needLog = false;
 
 startTask.fit()
@@ -124,7 +125,8 @@ itemsPer(2).target = orthMidTarget(2);
 
 orthPeriodTask = FMAM_ODE(sys, obs, seedSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-orthPeriodTask.isPsiUpdated = true;
+orthPeriodTask.psiUpdateMode = true;
+orthPeriodTask.refreshPsiModeReferences();
 orthPeriodTask.needLog = true;
 
 orthPeriodTask.fit()
@@ -172,7 +174,8 @@ itemsPer(2).target = endTarget(2);
 
 orthAmplitudeTask = FMAM_ODE(sys, obs, seedSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-orthAmplitudeTask.isPsiUpdated = true;
+orthAmplitudeTask.psiUpdateMode = true;
+orthAmplitudeTask.refreshPsiModeReferences();
 orthAmplitudeTask.needLog = true;
 
 orthAmplitudeTask.fit()
@@ -220,7 +223,8 @@ itemsPer(2).target = directMidTarget(2);
 
 directMidTask = FMAM_ODE(sys, obs, seedSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-directMidTask.isPsiUpdated = true;
+directMidTask.psiUpdateMode = true;
+directMidTask.refreshPsiModeReferences();
 directMidTask.needLog = true;
 
 directMidTask.fit()
@@ -268,7 +272,8 @@ itemsPer(2).target = endTarget(2);
 
 directPathTask = FMAM_ODE(sys, obs, seedSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-directPathTask.isPsiUpdated = true;
+directPathTask.psiUpdateMode = true;
+directPathTask.refreshPsiModeReferences();
 directPathTask.needLog = true;
 
 directPathTask.fit()

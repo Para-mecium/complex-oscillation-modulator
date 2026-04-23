@@ -70,7 +70,8 @@ for i = 1:numel(targetAmplitudes)
 
     seedTask = FMAM_ODE(sys, obs, baseSolverView, itemsPer, controlledIdx, [], errBound, ...
         'derivatives', derivatives, 'continuationOptions', continuationOptions);
-    seedTask.isPsiUpdated = true;
+    seedTask.psiUpdateMode = true;
+    seedTask.refreshPsiModeReferences();
     seedTask.needLog = false;
 
     seedTask.fit()
@@ -97,7 +98,8 @@ for i = 1:numel(targetAmplitudes)
 
     leftBranchTask = FMAM_ODE(sys, obs, seed.solverView, itemsPer, controlledIdx, [], errBound, ...
         'derivatives', derivatives, 'continuationOptions', continuationOptions);
-    leftBranchTask.isPsiUpdated = true;
+    leftBranchTask.psiUpdateMode = true;
+    leftBranchTask.refreshPsiModeReferences();
     leftBranchTask.needLog = true;
 
     leftBranchTask.fit()
@@ -120,7 +122,8 @@ for i = 1:numel(targetAmplitudes)
 
     rightBranchTask = FMAM_ODE(sys, obs, seed.solverView, itemsPer, controlledIdx, [], errBound, ...
         'derivatives', derivatives, 'continuationOptions', continuationOptions);
-    rightBranchTask.isPsiUpdated = true;
+    rightBranchTask.psiUpdateMode = true;
+    rightBranchTask.refreshPsiModeReferences();
     rightBranchTask.needLog = true;
 
     rightBranchTask.fit()

@@ -39,6 +39,49 @@ function testClosedEndpointSamplesAreAccepted(testCase)
     verifyEqual(testCase, stat.q_var(:, 1), zeros(size(stat.q_var(:, 1))), 'AbsTol', 5e-2);
 end
 
+function testLinearTimePhaseModeKeepsConstantPsiAndNativeFourierContent(testCase)
+    T = 10;
+    M = 5;
+    obs = {};
+    params = 1;
+    PV = struct('name', 'var', 'idx', 1);
+    discretization = fmam_state_defaults.defaultDiscretization();
+    discretization.reconstruction.phaseMode = 'linearTime';
+    discretization.reconstruction.phaseSampleCount = 256;
+    discretization.reconstruction.timeResampleCount = 512;
+
+    t = linspace(0, T, 1001).';
+    theta = 2 * pi * t / T;
+    x = [cos(theta) + 0.2 * cos(2 * theta), sin(theta)];
+
+    stat = state(obs, params, t, x, M, PV, discretization);
+
+    verifyEqual(testCase, stat.period, T, 'AbsTol', 1e-12);
+    verifyEqual(testCase, stat.p_Psi(1), T / (2 * pi), 'AbsTol', 1e-12);
+    verifyEqual(testCase, stat.p_Psi(2:end), zeros(M - 1, 1), 'AbsTol', 1e-12);
+    verifyEqual(testCase, stat.q_Psi, zeros(M - 1, 1), 'AbsTol', 1e-12);
+    verifyGreaterThan(testCase, abs(stat.p_var(3, 1)), 0.15);
+    verifyLessThan(testCase, abs(stat.p_var(2, 1) - 1), 1e-10);
+end
+
+function testLinearTimePhaseModeCanBePassedByNameValue(testCase)
+    T = 2 * pi;
+    M = 4;
+    obs = {};
+    params = 1;
+    PV = struct('name', 'var', 'idx', 1);
+    discretization = fmam_state_defaults.defaultDiscretization();
+    discretization.reconstruction.phaseMode = 'linearTime';
+    t = linspace(0, T, 101).';
+    x = [cos(t), sin(t)];
+
+    stat = state(obs, params, t, x, M, PV, ...
+        'discretization', discretization);
+
+    verifyEqual(testCase, stat.p_Psi(1), 1, 'AbsTol', 1e-12);
+    verifyEqual(testCase, stat.q_Psi, zeros(M - 1, 1), 'AbsTol', 1e-12);
+end
+
 function testNonMonotoneTimeMapEmitsNamedWarning(testCase)
     stat = make_reference_state();
     snapshot = make_solver_snapshot(stat);

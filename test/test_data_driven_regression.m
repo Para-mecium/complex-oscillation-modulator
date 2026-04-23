@@ -113,7 +113,8 @@ function [task, initialSolverView] = make_data_driven_task()
 
     task = FMAM_ODE(sys, obs, initialSolverView, items_per, items_controlled, [], errBound, ...
         'derivatives', derivatives, 'continuationOptions', continuationOptions);
-    task.isPsiUpdated = true;
+    task.psiUpdateMode = true;
+    task.refreshPsiModeReferences();
 end
 
 function [obs, params, t, TS_var] = canonicalize_trajectory_fixture(obs, params, t, TS_var, M, PV)

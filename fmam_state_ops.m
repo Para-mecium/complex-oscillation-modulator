@@ -476,17 +476,26 @@ classdef fmam_state_ops
             end
 
             phi = (0:reconstruction.phaseSampleCount-1)'*2*pi/reconstruction.phaseSampleCount;
-            t1 = linspace(0,T,reconstruction.timeResampleCount+1)';
-            t1(end) = [];
-            TS_variable_1 = zeros(reconstruction.timeResampleCount,dim);
-            TS_observable_1 = zeros(reconstruction.timeResampleCount,n);
-            for i = 1:dim
-                TS_variable_1(:,i) = spline(t,TS_variable(:,i),t1);
+            phaseMode = reconstruction.phaseMode;
+
+            if strcmpi(phaseMode,'linearTime')
+                [~,TS_variable_phi,TS_observable_phi] = fmam_state_ops.resamplePhysicalPeriod( ...
+                    t,TS_variable,TS_observable,T,reconstruction.phaseSampleCount);
+                [a,b] = fmam_state_ops.primaryAmplitudeCenterFromSamples( ...
+                    TS_variable_phi,TS_observable_phi,PV);
+
+                p_Psi = zeros(M,1);
+                q_Psi = zeros(max(M - 1,0),1);
+                p_Psi(1) = T / (2*pi);
+                [p_variable,q_variable] = fmam_state_ops.projectFourierSeries(TS_variable_phi,M);
+                if n > 0
+                    [p_observable,q_observable] = fmam_state_ops.projectFourierSeries(TS_observable_phi,M);
+                end
+                return
             end
 
-            for i = 1:n
-                TS_observable_1(:,i) = spline(t,TS_observable(:,i),t1);
-            end
+            [t1,TS_variable_1,TS_observable_1] = fmam_state_ops.resamplePhysicalPeriod( ...
+                t,TS_variable,TS_observable,T,reconstruction.timeResampleCount);
 
             if strcmpi(PV.name,'var')
                 X = TS_variable_1(:,PV.idx);
@@ -816,6 +825,37 @@ classdef fmam_state_ops
     end
 
     methods (Static, Access = private)
+        function [tPeriod,TSVariablePeriod,TSObservablePeriod] = resamplePhysicalPeriod( ...
+                t,TSVariable,TSObservable,T,sampleCount)
+            tClosed = linspace(0,T,sampleCount+1)';
+            TSVariableClosed = zeros(sampleCount+1,size(TSVariable,2));
+            TSObservableClosed = zeros(sampleCount+1,size(TSObservable,2));
+
+            for i = 1:size(TSVariable,2)
+                TSVariableClosed(:,i) = spline(t,TSVariable(:,i),tClosed);
+            end
+            for i = 1:size(TSObservable,2)
+                TSObservableClosed(:,i) = spline(t,TSObservable(:,i),tClosed);
+            end
+
+            tPeriod = tClosed(1:end-1);
+            TSVariablePeriod = TSVariableClosed(1:end-1,:);
+            TSObservablePeriod = TSObservableClosed(1:end-1,:);
+        end
+
+        function [a,b] = primaryAmplitudeCenterFromSamples(TSVariable,TSObservable,PV)
+            if strcmpi(PV.name,'var')
+                X = TSVariable(:,PV.idx);
+            elseif strcmpi(PV.name,'obs')
+                X = TSObservable(:,PV.idx);
+            else
+                error('Please check the class of the parimary variable.')
+            end
+
+            a = (max(X) - min(X)) / 2;
+            b = (max(X) + min(X)) / 2;
+        end
+
         function value = observableTargetCurrent(obs,p_var,q_var,Phi,k)
             pt_var = fmam_state_ops.evaluateTrigSeries(Phi,p_var,q_var);
             value = obs{k}(pt_var);

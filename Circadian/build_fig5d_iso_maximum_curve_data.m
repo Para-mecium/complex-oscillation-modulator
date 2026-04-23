@@ -91,7 +91,8 @@ itemsPer(2).target = targetKd;
 
 task = FMAM_ODE(sys, obs_spec(), baseSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-task.isPsiUpdated = true;
+task.psiUpdateMode = true;
+task.refreshPsiModeReferences();
 task.needLog = false;
 
 task.fit()
@@ -120,7 +121,8 @@ itemsPer(2).target = targetKd;
 
 task = FMAM_ODE(sys, obs_spec(), seedSolverView, itemsPer, controlledIdx, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions);
-task.isPsiUpdated = true;
+task.psiUpdateMode = true;
+task.refreshPsiModeReferences();
 task.needLog = true;
 
 task.fit()

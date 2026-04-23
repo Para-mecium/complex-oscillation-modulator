@@ -52,6 +52,7 @@ classdef FMAM_ODE < handle
         needLog = false
         verbose = true
         checkPsiNonnegative = true
+        psiUpdateMode = false
     end
 
     properties (Access = private)
@@ -59,20 +60,20 @@ classdef FMAM_ODE < handle
         dimObs
         dimParams 
         n_per
-        psiUpdateMode = false
         targetCurr = []
         stepsize = 0
         targetPath = struct([])
         
-        p_Psi_init = []
-        q_Psi_init = []
+        frozenPsiReferenceP = []
+        frozenPsiReferenceQ = []
+        phaseConditionReferencePVar = []
+        phaseConditionReferenceQVar = []
         solverView = struct()
         discretizationConfig = struct()
         extremaSearchConfig = struct()
     end
 
     properties (Dependent)
-        isPsiUpdated
         items_per_curr
         assemblySampleCount
         reconstruction
@@ -114,7 +115,8 @@ classdef FMAM_ODE < handle
             obj.derivatives = ctorOptions.derivatives;
             obj.newtonOptions = obj.normalizeNewtonOptions(ctorOptions.newtonOptions, 'newtonOptions');
             obj.continuationOptions = ctorOptions.continuationOptions;
-            obj.setPsiUpdateMode(ctorOptions.isPsiUpdated);
+            obj.psiUpdateMode = ctorOptions.psiUpdateMode;
+            obj.refreshPsiModeReferences();
             obj.needLog = ctorOptions.needLog;
             obj.verbose = ctorOptions.verbose;
             obj.errBound = ctorOptions.errBound;
@@ -124,14 +126,6 @@ classdef FMAM_ODE < handle
             obj.validateDerivativeCache();
 
             obj.targetCurr = obj.initialTargetValues();
-        end
-
-        function val = get.isPsiUpdated(obj)
-            val = obj.psiUpdateMode;
-        end
-
-        function set.isPsiUpdated(obj,value)
-            obj.setPsiUpdateMode(value);
         end
 
         function val = get.items_per_curr(obj)
@@ -184,12 +178,21 @@ classdef FMAM_ODE < handle
             obj.extremaSearchConfig = fmam_state_ops.normalizeExtremaSearchSettings(value);
         end
 
-        function setPsiUpdateMode(obj,value)
-            obj.applyPsiUpdateMode(value);
-        end
-
         function perturb(obj)
             obj.targetCurr = obj.targetCurr + obj.stepsize;
+        end
+
+        function refreshPsiModeReferences(obj)
+            validateattributes(obj.psiUpdateMode, {'numeric', 'logical'}, ...
+                {'scalar'}, 'FMAM_ODE', 'psiUpdateMode');
+            obj.psiUpdateMode = logical(obj.psiUpdateMode);
+            if obj.psiUpdateMode
+                obj.clearPsiModeReferences();
+                return
+            end
+
+            obj.captureFrozenPsiReferenceFromCurrentState();
+            obj.capturePhaseConditionReferenceFromCurrentState();
         end
 
         function rebuilt = rebuildState(obj)
@@ -431,8 +434,24 @@ classdef FMAM_ODE < handle
             derived = obj.buildDerivedView(obj.solverView);
         end
 
-        function loadSolverView(obj,view)
+        function loadSolverView(obj,view,opt)
+            if nargin < 3 || isempty(opt)
+                opt = struct();
+            end
+            if ~isstruct(opt)
+                error('FMAM_ODE:InvalidLoadSolverViewOption', ...
+                    'loadSolverView options must be provided as a struct.')
+            end
+            if ~isfield(opt,'refreshPsiModeReferences') || isempty(opt.refreshPsiModeReferences)
+                opt.refreshPsiModeReferences = true;
+            end
+            validateattributes(opt.refreshPsiModeReferences, {'numeric', 'logical'}, ...
+                {'scalar'}, 'FMAM_ODE', 'loadSolverView.refreshPsiModeReferences');
+
             obj.solverView = obj.normalizeSolverView(view);
+            if opt.refreshPsiModeReferences
+                obj.refreshPsiModeReferences();
+            end
         end
 
         function val = res(obj)
@@ -511,6 +530,9 @@ classdef FMAM_ODE < handle
             end
 
             val = [res_sys,res_var_phi,res_obs_phi,res_target];
+            if ~obj.psiUpdateMode
+                val = [val, abs(obj.frozenPhaseConditionResidual())];
+            end
         end
 
         function result = oneIter(obj)
@@ -531,7 +553,7 @@ classdef FMAM_ODE < handle
                 overrideOptions = struct();
             end
 
-            obj.ensurePsiReferenceInitialized();
+            obj.assertFrozenModeReferencesInitialized();
 
             problem = struct();
             problem.linearize = @() obj.linearizeNewtonProblem();
@@ -543,9 +565,19 @@ classdef FMAM_ODE < handle
             options = obj.effectiveNewtonOptions(overrideOptions);
         end
 
-        function ensurePsiReferenceInitialized(obj)
-            if ~obj.isPsiUpdated && (isempty(obj.p_Psi_init) || isempty(obj.q_Psi_init))
-                obj.captureFrozenPsiReference();
+        function assertFrozenModeReferencesInitialized(obj)
+            if obj.psiUpdateMode
+                return
+            end
+            if isempty(obj.frozenPsiReferenceP) || isempty(obj.frozenPsiReferenceQ)
+                error('FMAM_ODE:MissingFrozenPsiReference', ...
+                    ['Frozen Psi reference is not initialized. ' ...
+                    'Call refreshPsiModeReferences before solving.']);
+            end
+            if isempty(obj.phaseConditionReferencePVar) || isempty(obj.phaseConditionReferenceQVar)
+                error('FMAM_ODE:MissingPhaseConditionReference', ...
+                    ['Frozen phase condition reference is not initialized. ' ...
+                    'Call refreshPsiModeReferences before solving.']);
             end
         end
 
@@ -678,9 +710,17 @@ classdef FMAM_ODE < handle
             ctx.items_perturb = obj.items_perturb;
             ctx.items_controlled = obj.items_controlled;
             ctx.targetCurr = obj.targetCurr;
-            ctx.isPsiUpdated = obj.isPsiUpdated;
-            ctx.p_Psi_init = obj.p_Psi_init;
-            ctx.q_Psi_init = obj.q_Psi_init;
+            ctx.psiUpdateMode = obj.psiUpdateMode;
+            ctx.p_Psi_init = obj.frozenPsiReferenceP;
+            ctx.q_Psi_init = obj.frozenPsiReferenceQ;
+            if ~obj.psiUpdateMode && ...
+                    (isempty(obj.phaseConditionReferencePVar) || isempty(obj.phaseConditionReferenceQVar))
+                error('FMAM_ODE:MissingPhaseConditionReference', ...
+                    ['Frozen phase condition reference is not initialized. ' ...
+                    'Call refreshPsiModeReferences before assembly.']);
+            end
+            ctx.p_var_phase_ref = obj.phaseConditionReferencePVar;
+            ctx.q_var_phase_ref = obj.phaseConditionReferenceQVar;
             ctx.targetRuleCtx = runtimeContext.targetCtx;
         end
 
@@ -961,6 +1001,9 @@ classdef FMAM_ODE < handle
             end
 
             snapshot = obj.snapshotSolverView();
+            if ~obj.psiUpdateMode
+                obj.updatePhaseConditionReference(snapshot);
+            end
             [A,~,meta] = obj.linearizeNewtonProblem();
             diagnostics = struct( ...
                 'iterations', NaN, ...
@@ -999,7 +1042,9 @@ classdef FMAM_ODE < handle
                 'snapshot', snapshot, ...
                 'meta', meta, ...
                 'targetCurr', obj.targetCurr, ...
+                'psiModeReferences', obj.snapshotPsiModeReferences(), ...
                 'stepsize', obj.stepsize);
+
         end
 
         function restoreAcceptedContinuationState(obj,acceptedState)
@@ -1007,6 +1052,9 @@ classdef FMAM_ODE < handle
             obj.targetCurr = acceptedState.targetCurr;
             if isfield(acceptedState,'stepsize')
                 obj.stepsize = acceptedState.stepsize;
+            end
+            if isfield(acceptedState,'psiModeReferences')
+                obj.restorePsiModeReferences(acceptedState.psiModeReferences);
             end
         end
 
@@ -1113,11 +1161,7 @@ classdef FMAM_ODE < handle
                 return
             end
 
-            if obj.isPsiUpdated
-                trailingConstraints = max(0,2 * obj.truncationOrder - 1);
-            else
-                trailingConstraints = max(0,2 * obj.truncationOrder - 2);
-            end
+            trailingConstraints = max(0,2 * obj.truncationOrder - 1);
 
             rowStart = numRows - trailingConstraints - obj.n_per + 1;
             rowIdx = rowStart:(rowStart + obj.n_per - 1);
@@ -1339,29 +1383,69 @@ classdef FMAM_ODE < handle
             validation.message = sprintf('%s predictor accepted', predictorMode);
         end
 
-        function synchronizePsiReferenceMode(obj)
-            if ~obj.isPsiUpdated && (isempty(obj.p_Psi_init) || isempty(obj.q_Psi_init))
-                obj.captureFrozenPsiReference();
-            end
+        function captureFrozenPsiReferenceFromCurrentState(obj)
+            obj.frozenPsiReferenceP = obj.solverView.p_Psi;
+            obj.frozenPsiReferenceQ = obj.solverView.q_Psi;
         end
 
-        function applyPsiUpdateMode(obj,value)
-            validateattributes(value, {'numeric', 'logical'}, ...
-                {'scalar'}, 'FMAM_ODE', 'isPsiUpdated');
-            nextMode = logical(value);
-            previousMode = obj.psiUpdateMode;
-            obj.psiUpdateMode = nextMode;
-
-            if ~nextMode
-                if previousMode || isempty(obj.p_Psi_init) || isempty(obj.q_Psi_init)
-                    obj.captureFrozenPsiReference();
-                end
-            end
+        function clearPsiModeReferences(obj)
+            obj.frozenPsiReferenceP = [];
+            obj.frozenPsiReferenceQ = [];
+            obj.phaseConditionReferencePVar = [];
+            obj.phaseConditionReferenceQVar = [];
         end
 
-        function captureFrozenPsiReference(obj)
-            obj.p_Psi_init = obj.solverView.p_Psi;
-            obj.q_Psi_init = obj.solverView.q_Psi;
+        function refs = snapshotPsiModeReferences(obj)
+            refs = struct( ...
+                'frozenPsiReferenceP', obj.frozenPsiReferenceP, ...
+                'frozenPsiReferenceQ', obj.frozenPsiReferenceQ, ...
+                'phaseConditionReferencePVar', obj.phaseConditionReferencePVar, ...
+                'phaseConditionReferenceQVar', obj.phaseConditionReferenceQVar);
+        end
+
+        function restorePsiModeReferences(obj,refs)
+            obj.frozenPsiReferenceP = refs.frozenPsiReferenceP;
+            obj.frozenPsiReferenceQ = refs.frozenPsiReferenceQ;
+            obj.phaseConditionReferencePVar = refs.phaseConditionReferencePVar;
+            obj.phaseConditionReferenceQVar = refs.phaseConditionReferenceQVar;
+        end
+
+        function updatePhaseConditionReference(obj,solverView)
+            obj.phaseConditionReferencePVar = solverView.p_var;
+            obj.phaseConditionReferenceQVar = solverView.q_var;
+        end
+
+        function capturePhaseConditionReferenceFromCurrentState(obj)
+            obj.phaseConditionReferencePVar = obj.solverView.p_var;
+            obj.phaseConditionReferenceQVar = obj.solverView.q_var;
+        end
+
+        function residual = frozenPhaseConditionResidual(obj)
+            solverView = obj.solverView;
+            pRef = obj.phaseConditionReferencePVar;
+            qRef = obj.phaseConditionReferenceQVar;
+            if isempty(pRef) || isempty(qRef)
+                error('FMAM_ODE:MissingPhaseConditionReference', ...
+                    ['Frozen phase condition reference is not initialized. ' ...
+                    'Call refreshPsiModeReferences before evaluating residuals.']);
+            end
+            pVar = solverView.p_var;
+            qVar = solverView.q_var;
+            coeP = zeros(size(pVar));
+            coeQ = zeros(size(qVar));
+            M = size(qVar,1);
+            if M > 0
+                harmonics = reshape(1:M,[],1);
+                coeP(2:end,:) = harmonics .* qRef;
+                coeQ = -harmonics .* pRef(2:end,:);
+            end
+            scale = norm([coeP(:); coeQ(:)],2);
+            if ~(isfinite(scale) && scale > 0)
+                error('FMAM_ODE:InvalidFrozenPhaseReference', ...
+                    'Frozen phase reference tangent must have a positive finite norm.');
+            end
+            residual = -(sum(sum(coeP .* (pVar - pRef))) + ...
+                sum(sum(coeQ .* (qVar - qRef)))) / scale;
         end
 
         function validateStateDimensions(obj,solverView)
@@ -1798,7 +1882,7 @@ classdef FMAM_ODE < handle
                 'derivatives', [], ...
                 'newtonOptions', struct(), ...
                 'continuationOptions', struct(), ...
-                'isPsiUpdated', false, ...
+                'psiUpdateMode', false, ...
                 'checkPsiNonnegative', true, ...
                 'needLog', false, ...
                 'verbose', true, ...
@@ -1834,10 +1918,10 @@ classdef FMAM_ODE < handle
                                 'Constructor option ''continuationOptions'' must be a struct.')
                         end
                         opts.continuationOptions = value;
-                    case 'ispsiupdated'
+                    case 'psiupdatemode'
                         validateattributes(value, {'numeric', 'logical'}, ...
-                            {'scalar'}, 'FMAM_ODE', 'isPsiUpdated');
-                        opts.isPsiUpdated = logical(value);
+                            {'scalar'}, 'FMAM_ODE', 'psiUpdateMode');
+                        opts.psiUpdateMode = logical(value);
                     case 'checkpsinonnegative'
                         validateattributes(value, {'numeric', 'logical'}, ...
                             {'scalar'}, 'FMAM_ODE', 'checkPsiNonnegative');

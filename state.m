@@ -45,7 +45,6 @@ classdef state < handle
         dimObs
         dimParams
         truncationOrder
-        Atrans
         discretization
         extremaSearch
 
@@ -56,12 +55,14 @@ classdef state < handle
         TS_obs
     end
     methods
-        function obj = state(obs,Params,t,TS_var,M,PV)
+        function obj = state(obs,Params,t,TS_var,M,PV,varargin)
             obj.discretizationConfig = fmam_state_defaults.defaultDiscretization();
             obj.extremaSearchConfig = fmam_state_ops.defaultExtremaSearchSettings();
             if nargin == 0
                 return
             end
+            [obj.discretizationConfig,obj.extremaSearchConfig] = ...
+                state.parseConstructorOptions(varargin{:});
             if isempty(obs)
                 obs = {};
             elseif iscell(obs)
@@ -69,8 +70,8 @@ classdef state < handle
             end
             t = t(:);
             Params = Params(:)';
-            [t,TS_var] = state.normalizePeriodicInputs(t,TS_var);
-            state.validateInputs(obs,Params,t,TS_var,M,PV);
+            t = t - t(1);
+            fmam_state_ops.validateTrajectoryInputs(obs,Params,t,TS_var,M,PV);
 
             obj.obs = obs;
             discretization = obj.discretization;
@@ -166,17 +167,6 @@ classdef state < handle
             prop = (0:L-1)'*2*pi/L;
         end
 
-        function prop = get.Atrans(obj)
-            L = obj.discretization.reconstruction.phaseSampleCount;
-            prop = zeros(L,L+1);
-            prop(1,1) = -3;prop(1,2) = 4;prop(1,3) = -1;
-            for j = 2:L
-                prop(j,j+1) = 1;
-                prop(j,j-1) = -1;
-            end
-            prop = prop/(4*pi/L);
-        end
-
         function prop = get.t(obj)
             discretization = obj.discretization;
             issue = fmam_state_ops.timeMapInvariantIssue( ...
@@ -203,25 +193,6 @@ classdef state < handle
             obj.varPhase = derived.varPhase;
         end
 
-        function updateObs2(obj)
-            if obj.dimObs == 0
-                return
-            end
-            discretization = obj.discretization;
-            extremaSearch = obj.extremaSearch;
-            derived = fmam_state_ops.buildObservableDerivedState( ...
-                obj.obs,obj.p_var,obj.q_var,obj.p_Psi,obj.q_Psi,discretization,extremaSearch);
-
-            obj.p_obs = derived.p_obs;
-            obj.q_obs = derived.q_obs;
-            obj.obsPhiMax = derived.obsPhiMax;
-            obj.obsPhiMin = derived.obsPhiMin;
-            obj.obsAmp = derived.obsAmp;
-            obj.obsMax = derived.obsMax;
-            obj.obsMin = derived.obsMin;
-            obj.obsPhase = derived.obsPhase;
-        end
-
         function updatePeriod(obj)
             obj.period = 2*pi*obj.p_Psi(1);
         end
@@ -235,59 +206,6 @@ classdef state < handle
             else
                 obj.(propname)(idx) = obj.(propname)(idx) + val;
             end
-        end
-
-        function minus(obj,propname,idx,val)
-            if strcmpi(idx,'all')
-                if ~isequal(size(obj.(propname)),size(val))
-                    val = val';
-                end
-                obj.(propname) = obj.(propname) - val;
-            else
-                obj.(propname)(idx) = obj.(propname)(idx) - val;
-            end
-        end
-
-        function changeTruncOrder(obj,M)
-            M1 = obj.truncationOrder;
-            if M1 >= M
-                obj.p_var = obj.p_var(1:M+1,:);
-                obj.q_var = obj.q_var(1:M,:);
-                obj.p_Psi = obj.p_Psi(1:M,:);
-                obj.q_Psi = obj.q_Psi(1:max(M-1,0),:);
-            else
-                obj.p_var = [obj.p_var;zeros(M-M1,obj.dimSys)];
-                obj.q_var = [obj.q_var;zeros(M-M1,obj.dimSys)];
-                obj.p_Psi = [obj.p_Psi;zeros(M-M1,1)];
-                obj.q_Psi = [obj.q_Psi;zeros(M-M1,1)];
-            end
-            obj.refreshDerivedState();
-        end
-
-        function TSplot(obj,propname,idx,timedomain)
-            plot(obj.(timedomain),[obj.(propname)(:,idx)])
-
-            xlabel(timedomain)
-        end
-
-        function updatePV(obj,PV)
-            state.validatePrimaryVariable(PV,obj.dimSys,size(obj.obs,2));
-            discretization = obj.discretization;
-            extremaSearch = obj.extremaSearch;
-            solverView = fmam_state_ops.buildSolverViewFromTrajectory( ...
-                obj.obs,obj.params,obj.t,obj.TS_var,obj.truncationOrder,PV, ...
-                discretization,extremaSearch);
-            obj.PV = solverView.PV;
-            obj.params = solverView.params;
-            obj.p_Psi = solverView.p_Psi;
-            obj.q_Psi = solverView.q_Psi;
-            obj.p_var = solverView.p_var;
-            obj.q_var = solverView.q_var;
-            obj.varPhiMax = solverView.varPhiMax;
-            obj.varPhiMin = solverView.varPhiMin;
-            obj.obsPhiMax = solverView.obsPhiMax;
-            obj.obsPhiMin = solverView.obsPhiMin;
-            obj.refreshDerivedState();
         end
 
         function refreshDerivedState(obj)
@@ -332,15 +250,7 @@ classdef state < handle
             obj.obsMin = derived.obsMin;
             obj.varPhase = derived.varPhase;
             obj.obsPhase = derived.obsPhase;
-            [obj.a,obj.b] = state.primaryAmplitudeAndCenter(derived,obj.PV);
-        end
-
-        function updateFCOrigin(obj)
-            discretization = obj.discretization;
-            derived = fmam_state_ops.buildDerivedView( ...
-                obj.obs,obj.currentSolverView(),discretization);
-            obj.p_var_origin = derived.p_var_origin;
-            obj.q_var_origin = derived.q_var_origin;
+            [obj.a,obj.b] = fmam_state_ops.primaryAmplitudeAndCenter(derived,obj.PV);
         end
     end
 
@@ -375,29 +285,6 @@ classdef state < handle
             end
         end
 
-        function refreshObservableFourierCoefficients(obj)
-            discretization = obj.discretization;
-            [pObs,qObs] = fmam_state_ops.buildObservableFourierCoefficients( ...
-                obj.obs,obj.p_var,obj.q_var,obj.truncationOrder, ...
-                discretization.reconstruction.phaseSampleCount);
-            obj.p_obs = pObs;
-            obj.q_obs = qObs;
-        end
-
-        function solverView = currentSolverView(obj)
-            solverView = struct( ...
-                'params', obj.params, ...
-                'p_Psi', obj.p_Psi, ...
-                'q_Psi', obj.q_Psi, ...
-                'p_var', obj.p_var, ...
-                'q_var', obj.q_var, ...
-                'varPhiMax', obj.varPhiMax, ...
-                'varPhiMin', obj.varPhiMin, ...
-                'obsPhiMax', obj.obsPhiMax, ...
-                'obsPhiMin', obj.obsPhiMin, ...
-                'PV', obj.PV);
-        end
-
         function refreshStateConfigurationCaches(obj)
             if state.hasLoadedSolverState(obj)
                 obj.refreshDerivedState();
@@ -406,112 +293,7 @@ classdef state < handle
 
     end
 
-    
     methods(Static)
-        function TS_obs = getObs(obs,TS_var)
-            TS_obs = fmam_state_ops.getObs(obs,TS_var);
-        end
-
-        function output = Trintegration(p,q,phi_L,phi_U)
-            output = fmam_state_ops.Trintegration(p,q,phi_L,phi_U);
-        end
-
-        function [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
-            fourierCoeffs(M,t,TS_variable,TS_observable,PV)
-            discretization = fmam_state_defaults.defaultDiscretization();
-            [a,b,p_Psi,q_Psi,p_variable,q_variable,p_observable,q_observable] = ...
-                fmam_state_ops.reconstructSolverCoefficients( ...
-                    TS_variable,TS_observable,t(:)-t(1),M,PV,discretization);
-        end
-
-        function [p,q] = projectFourierSeries(TS,M)
-            [p,q] = fmam_state_ops.projectFourierSeries(TS,M);
-        end
-
-        function data = buildPrimaryBranchInterpolation(branchX, branchT, branchVar, branchObs)
-            data = fmam_state_ops.buildPrimaryBranchInterpolation(branchX, branchT, branchVar, branchObs);
-        end
-
-        function validateInputs(obs,Params,t,TS_var,M,PV)
-            fmam_state_ops.validateTrajectoryInputs(obs,Params,t,TS_var,M,PV);
-        end
-
-        function validatePrimaryVariable(PV,dimVar,dimObs)
-            if ~isstruct(PV) || ~all(isfield(PV,{'name','idx'}))
-                error('PV must be a struct with fields ''name'' and ''idx''.')
-            end
-            if ~ischar(PV.name) && ~(isstring(PV.name) && isscalar(PV.name))
-                error('PV.name must be ''var'' or ''obs''.')
-            end
-            if ~isscalar(PV.idx) || PV.idx < 1 || PV.idx ~= floor(PV.idx)
-                error('PV.idx must be a positive integer.')
-            end
-
-            switch lower(char(PV.name))
-                case 'var'
-                    if PV.idx > dimVar
-                        error('PV.idx exceeds the number of state variables.')
-                    end
-                case 'obs'
-                    if dimObs == 0
-                        error('PV.name cannot be ''obs'' when no observables are provided.')
-                    end
-                    if PV.idx > dimObs
-                        error('PV.idx exceeds the number of observables.')
-                    end
-                otherwise
-                    error('Please check the class of the parimary variable.')
-            end
-        end
-
-        function [tNorm,TSVarNorm] = normalizePeriodicInputs(t,TS_var)
-            [tNorm,TSVarNorm] = fmam_state_ops.normalizePeriodicInputs(t,TS_var);
-        end
-
-        function tf = hasRepeatedEndpoint(TS_var)
-            tf = fmam_state_ops.hasRepeatedEndpoint(TS_var);
-        end
-
-        function issue = timeMapInvariantIssue(PsiValues,p,q,numIntervals)
-            issue = fmam_state_ops.timeMapInvariantIssue(PsiValues,p,q,numIntervals);
-        end
-
-        function issue = positivePsiIssue(PsiValues)
-            issue = fmam_state_ops.positivePsiIssue(PsiValues);
-        end
-
-        function assertPositivePsi(PsiValues)
-            fmam_state_ops.assertPositivePsi(PsiValues);
-        end
-
-        function dt = timeIncrementsFromCoefficients(p,q,numIntervals)
-            if nargin < 3 || isempty(numIntervals)
-                numIntervals = fmam_state_defaults.defaultDiscretization().reconstruction.phaseSampleCount;
-            end
-            dt = fmam_state_ops.timeIncrementsFromCoefficients(p,q,numIntervals);
-        end
-
-        function issue = positiveTimeIncrementIssue(p,q,numIntervals)
-            issue = fmam_state_ops.positiveTimeIncrementIssue(p,q,numIntervals);
-        end
-
-        function assertPositiveTimeIncrements(p,q,numIntervals)
-            fmam_state_ops.assertPositiveTimeIncrements(p,q,numIntervals);
-        end
-
-        function values = evaluateTrigSeries(phi,p,q)
-            values = fmam_state_ops.evaluateTrigSeries(phi,p,q);
-        end
-
-        function fieldNames = solverStateFields()
-            fieldNames = { ...
-                'PV','params','p_Psi','q_Psi','p_var','q_var', ...
-                'p_var_origin','q_var_origin','p_obs','q_obs', ...
-                'a','b','varPhiMax','obsPhiMax','varPhiMin','obsPhiMin', ...
-                'varAmp','obsAmp','period','varMax','obsMax','varMin','obsMin', ...
-                'varPhase','obsPhase'};
-        end
-
         function obj = fromSolverSnapshot(obs,snapshot,discretization,extremaSearch)
             if isempty(obs)
                 obs = {};
@@ -562,9 +344,45 @@ classdef state < handle
             end
             obj = state.fromSolverSnapshot(obs,snapshot,discretization,extremaSearch);
         end
+    end
 
-        function [a,b] = primaryAmplitudeAndCenter(derived,PV)
-            [a,b] = fmam_state_ops.primaryAmplitudeAndCenter(derived,PV);
+    methods(Static, Access = private)
+        function [discretization,extremaSearch] = parseConstructorOptions(varargin)
+            discretization = fmam_state_defaults.defaultDiscretization();
+            extremaSearch = fmam_state_ops.defaultExtremaSearchSettings();
+            if isempty(varargin)
+                return
+            end
+
+            if numel(varargin) <= 2 && all(cellfun(@isstruct,varargin))
+                discretization = fmam_state_defaults.normalizeDiscretization(varargin{1});
+                if numel(varargin) == 2
+                    extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(varargin{2});
+                end
+                return
+            end
+
+            if mod(numel(varargin),2) ~= 0
+                error('state:InvalidConstructorOptions', ...
+                    'Optional state constructor arguments must be structs or name-value pairs.')
+            end
+            for i = 1:2:numel(varargin)
+                name = varargin{i};
+                value = varargin{i + 1};
+                if ~ischar(name) && ~(isstring(name) && isscalar(name))
+                    error('state:InvalidConstructorOptions', ...
+                        'Option names must be character vectors or scalar strings.')
+                end
+                switch lower(char(name))
+                    case 'discretization'
+                        discretization = fmam_state_defaults.normalizeDiscretization(value);
+                    case 'extremasearch'
+                        extremaSearch = fmam_state_ops.normalizeExtremaSearchSettings(value);
+                    otherwise
+                        error('state:InvalidConstructorOptions', ...
+                            'Unsupported state constructor option ''%s''.',char(name))
+                end
+            end
         end
 
         function discretization = mergeDiscretizationConfig(current,update)
@@ -616,6 +434,15 @@ classdef state < handle
         function tf = hasLoadedSolverState(obj)
             tf = ~isempty(obj.p_Psi) && ~isempty(obj.p_var) && ~isempty(obj.q_var) && ...
                 ~isempty(obj.params) && ~isempty(obj.PV);
+        end
+
+        function fieldNames = solverStateFields()
+            fieldNames = { ...
+                'PV','params','p_Psi','q_Psi','p_var','q_var', ...
+                'p_var_origin','q_var_origin','p_obs','q_obs', ...
+                'a','b','varPhiMax','obsPhiMax','varPhiMin','obsPhiMin', ...
+                'varAmp','obsAmp','period','varMax','obsMax','varMin','obsMin', ...
+                'varPhase','obsPhase'};
         end
     end
 end

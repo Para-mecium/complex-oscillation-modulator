@@ -11,7 +11,7 @@ seed = 1;
 rng(seed, 'twister');
 
 % Coupling type: 'gap' or 'synapse'.
-couplingType = 'synapse';
+couplingType = 'gap';
 
 % Shared HH parameters written in vector form.
 C0 = 1.0;
@@ -83,7 +83,7 @@ if strcmpi(couplingType, 'synapse')
 end
 
 I_high = [120;120];
-I_low = [7;7]; %
+I_low = [9.71170321577748;	9.92971952586611]; %
 
 y0 = [ ...
     V0 * randn(N, 1); ...
