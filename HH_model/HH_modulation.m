@@ -10,8 +10,9 @@ M = 75;
 seed = 1;
 rng(seed, 'twister');
 
-G_scale = 0.02;
-G = G_scale * (2*rand(N, N)-1);
+couplingType = 'synapse';
+G_scale = 0.1;
+G = G_scale * (2*randn(N, N)-1);
 
 % Fixed HH parameters.
 C0 = 1.0 * ones(N, 1);
@@ -21,10 +22,13 @@ gK0 = 36.0 * ones(N, 1);
 EK0 = -77.0 * ones(N, 1);
 gL0 = 0.3 * ones(N, 1);
 EL0 = -54.387 * ones(N, 1);
+tau0 = 1.0 * ones(N, 1);
+Vstar0 = 0 * ones(N, 1);
+Esyn0 = 0.0 * ones(N, 1);
 I0_vector = 120 * ones(N, 1);
 
 % Active parameters selected by name.
-active_param_names = {'I_1', 'I_2'};
+active_param_names = {'I_1'};
 
 % Shared initial state.
 V0 = 0.2;
@@ -40,14 +44,14 @@ targetScale2 = 4;
 orbitOptions = struct();
 orbitOptions.poOptions = struct( ...
     'solver_name', 'ode15s', ...
-    'single_timespan', 10000, ...
-    'max_windows', 1, ...
+    'single_timespan', 1000, ...
+    'max_windows', 5, ...
     'event', 1, ...
-    'solver_tol', struct('RelTol', 1e-6, 'AbsTol', 1e-6), ...
+    'solver_tol', struct('RelTol', 1e-6, 'AbsTol', 1e-9), ...
     'minCrossings', 6, ...
     'transientFraction', 0.5, ...
     'samplesPerCycle', 500, ...
-    'extractNumPoints', 600);
+    'extractNumPoints', 1200);
 
 % FMAM continuation settings.
 errBound = 1e-6;
@@ -74,6 +78,7 @@ addpath(fullfile(repoDir, 'PO_extract'), '-begin');
 
 %% Build fixed HH parameter struct
 defaultParams = struct();
+defaultParams.couplingType = couplingType;
 defaultParams.I = I0_vector(:);
 defaultParams.C = C0(:);
 defaultParams.gNa = gNa0(:);
@@ -82,6 +87,9 @@ defaultParams.gK = gK0(:);
 defaultParams.EK = EK0(:);
 defaultParams.gL = gL0(:);
 defaultParams.EL = EL0(:);
+defaultParams.tau = tau0(:);
+defaultParams.Vstar = Vstar0(:);
+defaultParams.Esyn = Esyn0(:);
 defaultParams.G = G;
 
 y0 = [ ...
@@ -111,6 +119,8 @@ initialfeat = reshape(initialOrbitResult.features.state.amplitude, 1, []);
 targetfeat = [ ...
     targetScale1 * initialfeat(1), ...
     targetScale2 * initialfeat(2)];
+% targetfeat = [ ...
+%     targetScale1 * initialfeat(1)];
 
 items_per = struct;
 items_per(1).prop = 'varAmp';
@@ -235,13 +245,27 @@ gK_i = get_node_param('gK', i, parameter, defaultParams, active_specs);
 EK_i = get_node_param('EK', i, parameter, defaultParams, active_specs);
 gL_i = get_node_param('gL', i, parameter, defaultParams, active_specs);
 EL_i = get_node_param('EL', i, parameter, defaultParams, active_specs);
+Esyn_i = get_node_param('Esyn', i, parameter, defaultParams, active_specs);
 
 I_cpl = 0;
-for j = 1:N
-    if j ~= i
-        G_ij = get_matrix_param('G', i, j, parameter, defaultParams, active_specs);
-        I_cpl = I_cpl + G_ij .* (V(:,j) - V(:,i));
-    end
+switch lower(string(defaultParams.couplingType))
+    case "gap"
+        for j = 1:N
+            if j ~= i
+                G_ij = get_matrix_param('G', i, j, parameter, defaultParams, active_specs);
+                I_cpl = I_cpl + G_ij .* (V(:,j) - V(:,i));
+            end
+        end
+    case "synapse"
+        for j = 1:N
+            if j ~= i
+                G_ij = get_matrix_param('G', i, j, parameter, defaultParams, active_specs);
+                tau_j = get_node_param('tau', j, parameter, defaultParams, active_specs);
+                Vstar_j = get_node_param('Vstar', j, parameter, defaultParams, active_specs);
+                sj = 1 ./ (1 + exp(-tau_j .* (V(:, j) - Vstar_j)));
+                I_cpl = I_cpl + G_ij .* sj .* (Esyn_i - V(:, i));
+            end
+        end
 end
 
 I_ion = gNa_i .* m(:, i).^3 .* h(:, i) .* (V(:, i) - ENa_i) ...
@@ -336,6 +360,7 @@ end
 
 function p = build_hh_p(allParams)
 p = struct();
+p.couplingType = allParams.couplingType;
 p.C = allParams.C;
 p.gNa = allParams.gNa;
 p.ENa = allParams.ENa;
@@ -343,6 +368,9 @@ p.gK = allParams.gK;
 p.EK = allParams.EK;
 p.gL = allParams.gL;
 p.EL = allParams.EL;
+p.tau = allParams.tau;
+p.Vstar = allParams.Vstar;
+p.Esyn = allParams.Esyn;
 p.G = allParams.G;
 end
 

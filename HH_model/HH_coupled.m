@@ -10,11 +10,19 @@ N = 2;
 seed = 1;
 rng(seed, 'twister');
 
+% Coupling type: 'gap' or 'synapse'.
+couplingType = 'synapse';
+
 % Shared HH parameters written in vector form.
 C0 = 1.0;
 gNa0 = 120.0; ENa0 = 50.0;
 gK0 = 36.0;   EK0 = -77.0;
 gL0 = 0.3;    EL0 = -54.387;
+
+% Synaptic coupling parameters.
+tau0 = 1.0;
+Vstar0 = 0;
+Esyn0 = 0.0;
 
 % Current levels (identical across neurons, kept in vector form).
 I_high_scalar = 120;
@@ -31,7 +39,7 @@ RelTol = 1e-6;
 AbsTol = 1e-6;
 
 % Time settings
-T_start = 10000;
+T_start = 2000;
 T_slow_total = 2*T_start;
 T_step_total = 2*T_start;
 t_hold = T_start;
@@ -54,10 +62,11 @@ t_TS_plot_span = 2*T_start;
 
 %% 2. Build parameters
 p = struct();
+p.couplingType = couplingType;
 
-G_scale = 0.01;
+G_scale = 0.05;
 if N > 1
-    p.G = G_scale * (2*rand(N,N)-1);
+    p.G = G_scale * (2*randn(N,N)-1);
 end
 
 p.C = C0 * ones(N, 1);
@@ -67,9 +76,14 @@ p.gK = gK0 * ones(N, 1);
 p.EK = EK0 * ones(N, 1);
 p.gL = gL0 * ones(N, 1);
 p.EL = EL0 * ones(N, 1);
+if strcmpi(couplingType, 'synapse')
+    p.tau = tau0 * ones(N, 1);
+    p.Vstar = Vstar0 * ones(N, 1);
+    p.Esyn = Esyn0 * ones(N, 1);
+end
 
 I_high = [120;120];
-I_low = [9.40124960614535;	5.99661111564136]; %
+I_low = [7;7]; %
 
 y0 = [ ...
     V0 * randn(N, 1); ...
