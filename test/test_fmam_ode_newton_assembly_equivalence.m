@@ -39,7 +39,9 @@ function testObservablePVGaugeRowsMatchFiniteDifference(testCase)
         struct('name', 'obs', 'idx', 1), true);
     ctx = make_assembly_context(task);
 
-    [A, ~, indexMap] = assemble_newton_linear_system(ctx);
+    assembly = assemble_newton_linear_system(ctx);
+    A = assembly.A;
+    indexMap = assembly.indexMap;
     gaugeRows = observable_pv_gauge_row_indices(ctx, size(A, 1));
 
     fdP = finite_difference_observable_gauge_column(ctx, ...
@@ -59,7 +61,10 @@ function testObservableExtremaRowsMatchFiniteDifference(testCase)
         struct('name', 'obs', 'idx', 1), true);
     ctx = make_assembly_context(task);
 
-    [A, res, indexMap] = assemble_newton_linear_system(ctx);
+    assembly = assemble_newton_linear_system(ctx);
+    A = assembly.A;
+    res = assembly.residual;
+    indexMap = assembly.indexMap;
     rowMax = observable_extrema_row_index(ctx, 1, 'max');
     rowMin = observable_extrema_row_index(ctx, 1, 'min');
 
@@ -97,7 +102,10 @@ function testFrozenPsiPhaseConstraintRowMatchesAnalyticReference(testCase)
     ctx.p_var(3, 1) = ctx.p_var(3, 1) + 1e-2;
     ctx.q_var(1, 2) = ctx.q_var(1, 2) - 2e-2;
 
-    [A, res, indexMap] = assemble_newton_linear_system(ctx);
+    assembly = assemble_newton_linear_system(ctx);
+    A = assembly.A;
+    res = assembly.residual;
+    indexMap = assembly.indexMap;
     rowIdx = frozen_phase_constraint_row_index(size(A, 1));
     [expectedRow, expectedResidual] = frozen_phase_constraint_from_context(ctx, indexMap, size(A, 2));
 
@@ -145,11 +153,15 @@ function testAssemblyFallbackTargetContextUsesTaskDiscretization(testCase)
     task = FMAM_ODE(sys, obs, solverView, item, 1, 1e-3, 1e-6, ...
         'derivatives', derivatives, 'reconstruction', reconstruction);
     ctxWithTarget = make_assembly_context(task);
-    [AWith, resWith] = assemble_newton_linear_system(ctxWithTarget);
+    assemblyWith = assemble_newton_linear_system(ctxWithTarget);
+    AWith = assemblyWith.A;
+    resWith = assemblyWith.residual;
 
     ctxFallback = ctxWithTarget;
     ctxFallback.targetRuleCtx = [];
-    [AFallback, resFallback] = assemble_newton_linear_system(ctxFallback);
+    assemblyFallback = assemble_newton_linear_system(ctxFallback);
+    AFallback = assemblyFallback.A;
+    resFallback = assemblyFallback.residual;
 
     verifyEqual(testCase, AFallback, AWith, 'AbsTol', 1e-12);
     verifyEqual(testCase, resFallback, resWith, 'AbsTol', 1e-12);
@@ -158,8 +170,14 @@ end
 function verifyAssemblyMatchesSharedHelper(testCase, task)
     ctx = make_assembly_context(task);
 
-    [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx);
+    assembly = assemble_newton_linear_system(ctx);
+    A = assembly.A;
+    res = assembly.residual;
+    indexMap = assembly.indexMap;
+    unknowns = assembly.unknowns;
 
+    verifyTrue(testCase, all(isfield(assembly, ...
+        {'A', 'residual', 'indexMap', 'unknowns', 'rows', 'parameters'})));
     verifyEqual(testCase, unknowns, {'params', 'p_Psi', 'q_Psi', 'p_var', 'q_var', ...
         'varPhiMax', 'varPhiMin', 'obsPhiMax', 'obsPhiMin'});
     verifyTrue(testCase, all(isfield(indexMap, unknowns)));
@@ -168,9 +186,37 @@ function verifyAssemblyMatchesSharedHelper(testCase, task)
     verifyEqual(testCase, size(A,2), maxIndex);
     verifyFalse(testCase, any(isnan(A(:))));
     verifyFalse(testCase, any(isnan(res(:))));
+    verifyAssemblyRowMetadata(testCase, ctx, assembly);
 
     verifyTargetRowsMatchSharedHelper(testCase, ctx, A, res, indexMap);
     verifyExtremaRowsRespectSharedHelper(testCase, ctx, A, res, indexMap);
+end
+
+function verifyAssemblyRowMetadata(testCase, ctx, assembly)
+    expectedKinds = {'system', 'variable_extrema', 'observable_extrema', ...
+        'fixed_params', 'targets', 'gauge'};
+    verifyEqual(testCase, {assembly.rows.kind}, expectedKinds);
+
+    rowIdx = [assembly.rows.idx];
+    verifyEqual(testCase, rowIdx, 1:size(assembly.A, 1));
+    for i = 1:numel(assembly.rows)
+        verifyTrue(testCase, isrow(assembly.rows(i).idx));
+        if ~isempty(assembly.rows(i).idx)
+            verifyGreaterThanOrEqual(testCase, assembly.rows(i).idx, 1);
+            verifyLessThanOrEqual(testCase, assembly.rows(i).idx, size(assembly.A, 1));
+        end
+    end
+
+    fixedParams = setdiff(1:ctx.dimParams, ctx.items_controlled);
+    verifyEqual(testCase, assembly.parameters.controlled, ctx.items_controlled);
+    verifyEqual(testCase, assembly.parameters.fixed, fixedParams);
+
+    fixedRow = assembly.rows(strcmp({assembly.rows.kind}, 'fixed_params'));
+    verifyEqual(testCase, fixedRow.meta.paramIndices, fixedParams);
+
+    targetRow = assembly.rows(strcmp({assembly.rows.kind}, 'targets'));
+    verifyEqual(testCase, targetRow.meta.items, ctx.items_perturb);
+    verifyEqual(testCase, targetRow.meta.targetCurr, ctx.targetCurr);
 end
 
 function verifyOneIterMatchesAssemblyResidual(testCase, task)
@@ -178,7 +224,8 @@ function verifyOneIterMatchesAssemblyResidual(testCase, task)
 
     result = task.oneIter();
     ctx = make_assembly_context(task);
-    [~, expectedResidual] = assemble_newton_linear_system(ctx);
+    assembly = assemble_newton_linear_system(ctx);
+    expectedResidual = assembly.residual;
     expectedErrorVec = reshape(task.res(), 1, []);
 
     verifyEqual(testCase, result.iterations, numel(result.history));
@@ -390,7 +437,9 @@ function ctx = make_assembly_context(task)
 end
 
 function verifyFrozenPhaseConstraintTargetsReferenceTangent(testCase, ctx)
-    [A, ~, indexMap] = assemble_newton_linear_system(ctx);
+    assembly = assemble_newton_linear_system(ctx);
+    A = assembly.A;
+    indexMap = assembly.indexMap;
     rowIdx = frozen_phase_constraint_row_index(size(A, 1));
     tangent = zeros(size(A, 2), 1);
     tangent(indexMap.p_var(:)) = frozen_phase_tangent_coefficients( ...

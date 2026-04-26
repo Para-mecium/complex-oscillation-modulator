@@ -78,6 +78,24 @@ function testConstructorRejectsUnknownNewtonOptionField(testCase)
         'FMAM_ODE:UnknownNewtonOption');
 end
 
+function testConstructorAcceptsNewtonStabilizationOptions(testCase)
+    task = make_guardrail_task('newtonOptions', struct( ...
+        'linearSystemScaling', 'none', ...
+        'requireDescent', false, ...
+        'acceptIncreaseTolerance', 0.25));
+
+    verifyEqual(testCase, task.newtonOptions.linearSystemScaling, 'none');
+    verifyFalse(testCase, task.newtonOptions.requireDescent);
+    verifyEqual(testCase, task.newtonOptions.acceptIncreaseTolerance, 0.25, ...
+        'AbsTol', 0);
+end
+
+function testConstructorRejectsInvalidNewtonScalingOption(testCase)
+    verifyError(testCase, ...
+        @() make_guardrail_task('newtonOptions', struct('linearSystemScaling', 'column')), ...
+        'FMAM_ODE:InvalidNewtonOption');
+end
+
 function testRuntimeKnobsDoNotChangeFrozenTargetSnapshot(testCase)
     task = make_guardrail_task();
     frozenTargets = task.items_per_curr;

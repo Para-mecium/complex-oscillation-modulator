@@ -81,13 +81,15 @@ end
 function iterationResult = run_iteration(problem, J, r, meta, measurement, lambdaSeed, opts)
     iterationResult = empty_iteration_result(J, r, meta, measurement, lambdaSeed, opts);
     baseSnapshot = problem.snapshot();
-    directAttempt = attempt_direct_step(problem, baseSnapshot, J, r, meta, opts, iterationResult);
+    directAttempt = attempt_direct_step( ...
+        problem, baseSnapshot, J, r, meta, measurement, opts, iterationResult);
     if ~strcmp(directAttempt.status, 'failed')
         iterationResult = directAttempt;
         return
     end
 
-    lmAttempt = attempt_lm_step(problem, baseSnapshot, J, r, meta, lambdaSeed, opts, directAttempt);
+    lmAttempt = attempt_lm_step( ...
+        problem, baseSnapshot, J, r, meta, measurement, lambdaSeed, opts, directAttempt);
     if ~strcmp(lmAttempt.status, 'failed')
         iterationResult = lmAttempt;
         return
@@ -97,7 +99,7 @@ function iterationResult = run_iteration(problem, J, r, meta, measurement, lambd
     iterationResult.message = compose_failure_message(directAttempt.message, lmAttempt.message);
 end
 
-function attempt = attempt_direct_step(problem, baseSnapshot, J, r, meta, opts, template)
+function attempt = attempt_direct_step(problem, baseSnapshot, J, r, meta, measurement, opts, template)
     attempt = template;
     attempt.solver = 'direct';
     attempt.lambda = 0;
@@ -121,7 +123,7 @@ function attempt = attempt_direct_step(problem, baseSnapshot, J, r, meta, opts, 
     end
 
     [accepted, candidate, candidateMessage, candidateStatus, acceptedScale, backtracks, scaledStepNorm] = ...
-        apply_candidate(problem, baseSnapshot, meta, delta, attempt.stepNorm, opts);
+        apply_candidate(problem, baseSnapshot, meta, delta, attempt.stepNorm, measurement, opts);
     if accepted
         attempt = accept_candidate( ...
             attempt, candidate, opts.initialLambda, opts, acceptedScale, backtracks, scaledStepNorm);
@@ -134,7 +136,7 @@ function attempt = attempt_direct_step(problem, baseSnapshot, J, r, meta, opts, 
     end
 end
 
-function attempt = attempt_lm_step(problem, baseSnapshot, J, r, meta, lambdaSeed, opts, template)
+function attempt = attempt_lm_step(problem, baseSnapshot, J, r, meta, measurement, lambdaSeed, opts, template)
     attempt = template;
     attempt.solver = 'lm';
     lmOpts = linear_solver_options(opts);
@@ -160,7 +162,7 @@ function attempt = attempt_lm_step(problem, baseSnapshot, J, r, meta, lambdaSeed
     end
 
     [accepted, candidate, candidateMessage, candidateStatus, acceptedScale, backtracks, scaledStepNorm] = ...
-        apply_candidate(problem, baseSnapshot, meta, delta, attempt.stepNorm, opts);
+        apply_candidate(problem, baseSnapshot, meta, delta, attempt.stepNorm, measurement, opts);
     if accepted
         attempt = accept_candidate( ...
             attempt, candidate, max(opts.lambdaMin, solveResult.lambda * opts.lambdaShrink), ...
@@ -175,7 +177,7 @@ function attempt = attempt_lm_step(problem, baseSnapshot, J, r, meta, lambdaSeed
 end
 
 function [accepted, candidate, message, status, acceptedScale, backtracks, scaledStepNorm] = ...
-        apply_candidate(problem, baseSnapshot, meta, delta, stepNorm, opts)
+        apply_candidate(problem, baseSnapshot, meta, delta, stepNorm, measurement, opts)
     accepted = false;
     candidate = struct();
     message = '';
@@ -201,13 +203,12 @@ function [accepted, candidate, message, status, acceptedScale, backtracks, scale
             if hasValidator
                 validation = normalize_candidate_validation(problem.validateCandidate(meta, delta, scale));
                 if ~validation.isValid
-                    problem.restore(baseSnapshot);
                     message = compose_candidate_validation_message(validation.message);
-                    if backtracks >= opts.candidateBacktrackingMaxBacktracks
+                    [canRetry, backtracks, scale] = reject_candidate_with_backtracking( ...
+                        problem, baseSnapshot, message, backtracks, scale, opts);
+                    if ~canRetry
                         return
                     end
-                    backtracks = backtracks + 1;
-                    scale = scale * opts.candidateBacktrackingFactor;
                     continue
                 end
             end
@@ -224,9 +225,24 @@ function [accepted, candidate, message, status, acceptedScale, backtracks, scale
 
         if ~all(isfinite(rCandidate)) || ~all(isfinite(measurementCandidate.errorVec)) || ...
                 ~isfinite(objectiveCandidate) || ~isfinite(measurementCandidate.scalarError)
-            problem.restore(baseSnapshot);
             message = 'trial iterate produced non-finite residuals or errors';
-            return
+            [canRetry, backtracks, scale] = reject_candidate_with_backtracking( ...
+                problem, baseSnapshot, message, backtracks, scale, opts);
+            if ~canRetry
+                return
+            end
+            continue
+        end
+
+        if opts.requireDescent && measurementCandidate.scalarError > ...
+                measurement.scalarError * (1 + opts.acceptIncreaseTolerance)
+            message = 'trial iterate increased nonlinear scalar error';
+            [canRetry, backtracks, scale] = reject_candidate_with_backtracking( ...
+                problem, baseSnapshot, message, backtracks, scale, opts);
+            if ~canRetry
+                return
+            end
+            continue
         end
 
         accepted = true;
@@ -240,6 +256,19 @@ function [accepted, candidate, message, status, acceptedScale, backtracks, scale
         candidate.residualNorm = residualNormCandidate;
         return
     end
+end
+
+function [canRetry, backtracks, scale] = reject_candidate_with_backtracking( ...
+        problem, baseSnapshot, ~, backtracks, scale, opts)
+    problem.restore(baseSnapshot);
+    if backtracks >= opts.candidateBacktrackingMaxBacktracks
+        canRetry = false;
+        return
+    end
+
+    backtracks = backtracks + 1;
+    scale = scale * opts.candidateBacktrackingFactor;
+    canRetry = true;
 end
 
 function attempt = accept_candidate(attempt, candidate, nextLambda, opts, acceptedScale, backtracks, scaledStepNorm)
@@ -390,7 +419,8 @@ function opts = linear_solver_options(opts)
         'lambdaMax', opts.lambdaMax, ...
         'lambdaGrow', opts.lambdaGrow, ...
         'directConditionThreshold', opts.directConditionThreshold, ...
-        'lmConditionThreshold', opts.lmConditionThreshold);
+        'lmConditionThreshold', opts.lmConditionThreshold, ...
+        'linearSystemScaling', opts.linearSystemScaling);
 end
 
 function validate_problem(problem)
@@ -450,6 +480,18 @@ function opts = normalize_options(opts)
     validateattributes(opts.candidateBacktrackingMaxBacktracks, {'numeric'}, ...
         {'scalar', 'integer', 'nonnegative'}, ...
         'solve_generic_newton', 'candidateBacktrackingMaxBacktracks');
+    opts.linearSystemScaling = normalize_linear_system_scaling(opts.linearSystemScaling, ...
+        'solve_generic_newton');
+    validateattributes(opts.requireDescent, {'logical', 'numeric'}, ...
+        {'scalar'}, 'solve_generic_newton', 'requireDescent');
+    if isnumeric(opts.requireDescent) && ~isfinite(opts.requireDescent)
+        error('solve_generic_newton:InvalidOptions', ...
+            'requireDescent must be a finite scalar logical or numeric value.');
+    end
+    opts.requireDescent = logical(opts.requireDescent);
+    validateattributes(opts.acceptIncreaseTolerance, {'numeric'}, ...
+        {'scalar', 'finite', 'nonnegative'}, ...
+        'solve_generic_newton', 'acceptIncreaseTolerance');
 end
 
 function opts = default_options()
@@ -463,6 +505,18 @@ function opts = default_options()
     opts.lambdaShrink = 0.3;
     opts.directConditionThreshold = 1e-10;
     opts.lmConditionThreshold = 1e-12;
+    opts.linearSystemScaling = 'row';
+    opts.requireDescent = true;
+    opts.acceptIncreaseTolerance = 1e-3;
     opts.candidateBacktrackingFactor = 0.5;
     opts.candidateBacktrackingMaxBacktracks = 6;
+end
+
+function value = normalize_linear_system_scaling(value, callerName)
+    value = char(string(value));
+    validValues = {'row', 'none'};
+    if ~any(strcmp(value, validValues))
+        error([callerName ':InvalidLinearSystemScaling'], ...
+            'linearSystemScaling must be one of: %s.', strjoin(validValues, ', '));
+    end
 end

@@ -3,6 +3,15 @@
 
 clear; clc; 
 
+%Initcond
+y0 = [-54.3133;
+    -36.3295;
+    0.3095;
+    0.4743;
+    0.0643;
+    0.0963;
+    0.6583;
+    0.6145];
 %% 1. Local configuration
 N = 2;
 
@@ -11,10 +20,10 @@ seed = 1;
 rng(seed, 'twister');
 
 % Coupling type: 'gap' or 'synapse'.
-couplingType = 'gap';
+couplingType = 'synapse';
 
 % Shared HH parameters written in vector form.
-C0 = 1.0;
+C0 = 1;
 gNa0 = 120.0; ENa0 = 50.0;
 gK0 = 36.0;   EK0 = -77.0;
 gL0 = 0.3;    EL0 = -54.387;
@@ -29,17 +38,22 @@ I_high_scalar = 120;
 I_low_scalar = 80;
 
 % Shared initial condition, replicated to all neurons.
-V0 = 0.2;
-m0 = 0.5;
-h0 = 0.2;
-n0 = 0.5;
+% V0 = 10;
+% m0 = 0.5;
+% h0 = 0.2;
+% n0 = 0.5;
+
+V0 = 1;
+m0 = 1;
+h0 = 1;
+n0 = 1;
 
 % Solver options.
 RelTol = 1e-6;
 AbsTol = 1e-6;
 
 % Time settings
-T_start = 2000;
+T_start = 10000;
 T_slow_total = 2*T_start;
 T_step_total = 2*T_start;
 t_hold = T_start;
@@ -64,9 +78,10 @@ t_TS_plot_span = 2*T_start;
 p = struct();
 p.couplingType = couplingType;
 
-G_scale = 0.05;
+G_scale = 1;
 if N > 1
-    p.G = G_scale * (2*randn(N,N)-1);
+    % p.G = G_scale * rand(N,N);
+    p.G = G_scale * [0 1;10 0];
 end
 
 p.C = C0 * ones(N, 1);
@@ -83,13 +98,13 @@ if strcmpi(couplingType, 'synapse')
 end
 
 I_high = [120;120];
-I_low = [9.71170321577748;	9.92971952586611]; %
+I_low = [7;7]; %
 
-y0 = [ ...
-    V0 * randn(N, 1); ...
-    m0 * ones(N, 1); ...
-    h0 * ones(N, 1); ...
-    n0 * ones(N, 1)];
+% y0 = [ ...
+%     V0 * [-51.0789;-34.7986]; ...
+%     m0 * [0.4135;0.4135]; ...
+%     h0 * ones(N, 1); ...
+%     n0 * ones(N, 1)];
 
 options = odeset('RelTol', RelTol, 'AbsTol', AbsTol);
 

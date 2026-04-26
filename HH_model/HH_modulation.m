@@ -10,9 +10,17 @@ M = 75;
 seed = 1;
 rng(seed, 'twister');
 
-couplingType = 'gap';
-G_scale = 0.05;
-G = G_scale * (2*randn(N, N)-1);
+couplingType = 'synapse';
+
+% network setting
+
+% G_scale = 0.5;
+% G = G_scale * (2*randn(N, N)-1);
+
+G_scale = 1;
+if N > 1
+    G = G_scale * [0 1;1 0];
+end
 
 % Fixed HH parameters.
 C0 = 1.0 * ones(N, 1);
@@ -28,7 +36,7 @@ Esyn0 = 0.0 * ones(N, 1);
 I0_vector = 120 * ones(N, 1);
 
 % Active parameters selected by name.
-active_param_names = {'I_1','I_2'};
+active_param_names = {'G_1_2','G_2_1'};
 
 % Shared initial state.
 V0 = 0.2;
@@ -37,15 +45,15 @@ h0 = 0.2;
 n0 = 0.5;
 
 % Target amplitudes relative to the initial periodic orbit.
-targetScale1 = 4;
-targetScale2 = 4;
+targetScale1 = 1;
+targetScale2 = 1;
 
 % Orbit extraction settings.
 orbitOptions = struct();
 orbitOptions.poOptions = struct( ...
     'solver_name', 'ode15s', ...
-    'single_timespan', 1200, ...
-    'max_windows', 5, ...
+    'single_timespan', 10000, ...
+    'max_windows', 1, ...
     'event', 1, ...
     'solver_tol', struct('RelTol', 1e-6, 'AbsTol', 1e-9), ...
     'minCrossings', 6, ...
@@ -65,9 +73,12 @@ continuationOptions = struct( ...
     'initialLambdaStep', initialLambdaStep, ...
     'predictorMode', 'constant',...
     'minLambdaStep', 1e-6);
-newtonOptions = struct(...
-    'directConditionThreshold', 1e-12,...
-    'lmConditionThreshold', 1e-14);
+
+newtonOptions = struct( ...
+    'acceptIncreaseTolerance', 1e-3, ...
+    'directConditionThreshold', 1e-8, ...
+    'candidateBacktrackingMaxBacktracks', 12);
+
 
 %% Paths
 scriptDir = fileparts(mfilename('fullpath'));
@@ -91,12 +102,21 @@ defaultParams.tau = tau0(:);
 defaultParams.Vstar = Vstar0(:);
 defaultParams.Esyn = Esyn0(:);
 defaultParams.G = G;
+%
+% y0 = [ ...
+%     V0 * randn(N, 1); ...
+%     m0 * ones(N, 1); ...
+%     h0 * ones(N, 1); ...
+%     n0 * ones(N, 1)];
 
-y0 = [ ...
-    V0 * randn(N, 1); ...
-    m0 * ones(N, 1); ...
-    h0 * ones(N, 1); ...
-    n0 * ones(N, 1)];
+y0 = [-34.8003000484464;
+    -53.0254459972371;
+    0.504762235652933;
+    0.172834876201937;
+    0.0925088491718049;
+    0.103464256605138;
+    0.618570408161515;
+    0.612815717775676];
 
 %% Initial periodic orbit and features
 initialOrbitResult = HH_forward_orbit(build_hh_p(defaultParams), defaultParams.I, y0, N, orbitOptions);
@@ -113,7 +133,7 @@ derivatives = build_symbolic_derivatives(sys, obs, numel(params));
 
 PV = struct('name', 'var', 'idx', 1);
 discretization = fmam_state_defaults.defaultDiscretization();
-discretization.reconstruction.phaseMode = 'linearTime';
+discretization.reconstruction.phaseMode = 'linearTime'; % primaryCosine, linearTime
 State = state(obs, params, t, TS_var, M, PV, 'discretization', discretization);
 StateView = fmam_state_ops.solverViewFromState(State);
 
@@ -125,19 +145,20 @@ targetfeat = [ ...
 %     targetScale1 * initialfeat(1)];
 
 items_per = struct;
-items_per(1).prop = 'varMax';
+items_per(1).prop = 'varAmp';
 items_per(1).idx = 1;
-items_per(1).target = 40;
+items_per(1).target = targetfeat(1);
 
-items_per(2).prop = 'varMax';
+items_per(2).prop = 'varAmp';
 items_per(2).idx = 2;
-items_per(2).target = 32;
+items_per(2).target = targetfeat(2);
 
 % items_per(3).prop = 'varAmp';
 % items_per(3).idx = 3;
 % items_per(3).target = targetfeat(3);
 
 items_controlled = 1:numel(params);
+% items_controlled = 1:1;
 task = FMAM_ODE(sys, obs, StateView, items_per, items_controlled, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions,'newtonOptions',newtonOptions);
 task.psiUpdateMode = false;

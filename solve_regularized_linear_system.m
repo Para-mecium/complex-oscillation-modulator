@@ -8,6 +8,7 @@ function result = solve_regularized_linear_system(A, b, opts, mode)
     opts = normalize_options(opts);
     mode = normalize_mode(mode);
     result = empty_result(A);
+    result.linearSystemScaling = opts.linearSystemScaling;
 
     [isValid, validationMessage, rhs] = validate_inputs(A, b);
     if ~isValid
@@ -15,11 +16,13 @@ function result = solve_regularized_linear_system(A, b, opts, mode)
         return
     end
 
-    directCondition = estimate_linear_condition(A);
+    [solveA, solveRhs] = scale_linear_system(A, rhs, opts.linearSystemScaling);
+
+    directCondition = estimate_linear_condition(solveA);
     result.directConditionEstimate = directCondition;
 
     if ~strcmp(mode, 'lm_only')
-        directResult = attempt_direct_solve(A, rhs, directCondition, opts, result);
+        directResult = attempt_direct_solve(solveA, solveRhs, directCondition, opts, result);
         if directResult.success || strcmp(mode, 'direct_only')
             result = directResult;
             return
@@ -31,8 +34,21 @@ function result = solve_regularized_linear_system(A, b, opts, mode)
         return
     end
 
-    lmResult = attempt_lm_solve(A, rhs, opts, result);
+    lmResult = attempt_lm_solve(solveA, solveRhs, opts, result);
     result = lmResult;
+end
+
+function [scaledA, scaledRhs] = scale_linear_system(A, rhs, scalingMode)
+    switch scalingMode
+        case 'none'
+            scaledA = A;
+            scaledRhs = rhs;
+        case 'row'
+            rowNorm = vecnorm(A, 2, 2);
+            rowNorm(rowNorm == 0) = 1;
+            scaledA = bsxfun(@rdivide, A, rowNorm);
+            scaledRhs = rhs ./ rowNorm;
+    end
 end
 
 function result = attempt_direct_solve(A, rhs, directCondition, opts, result)
@@ -210,6 +226,8 @@ function opts = normalize_options(opts)
         'solve_regularized_linear_system', 'directConditionThreshold');
     validateattributes(opts.lmConditionThreshold, {'numeric'}, {'scalar', 'positive'}, ...
         'solve_regularized_linear_system', 'lmConditionThreshold');
+    opts.linearSystemScaling = normalize_linear_system_scaling(opts.linearSystemScaling, ...
+        'solve_regularized_linear_system');
 end
 
 function opts = default_options()
@@ -220,6 +238,7 @@ function opts = default_options()
     opts.lambdaGrow = 10;
     opts.directConditionThreshold = 1e-10;
     opts.lmConditionThreshold = 1e-12;
+    opts.linearSystemScaling = 'row';
 end
 
 function result = empty_result(A)
@@ -229,9 +248,19 @@ function result = empty_result(A)
         'solver', '', ...
         'conditionEstimate', NaN, ...
         'directConditionEstimate', NaN, ...
+        'linearSystemScaling', '', ...
         'lambda', NaN, ...
         'stepNorm', NaN, ...
         'message', '');
+end
+
+function value = normalize_linear_system_scaling(value, callerName)
+    value = char(string(value));
+    validValues = {'row', 'none'};
+    if ~any(strcmp(value, validValues))
+        error([callerName ':InvalidLinearSystemScaling'], ...
+            'linearSystemScaling must be one of: %s.', strjoin(validValues, ', '));
+    end
 end
 
 function value = safe_rcond(matrixValue)

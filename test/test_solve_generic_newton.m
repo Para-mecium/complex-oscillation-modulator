@@ -71,7 +71,8 @@ function testIllConditionedSystemUsesLM(testCase)
     opts = struct('maxIterations', 6, 'incrementTolerance', 1e-12, ...
         'initialLambda', 1e-8, 'lambdaMin', 1e-12, 'lambdaMax', 1e6, ...
         'lambdaGrow', 10, 'lambdaShrink', 0.3, ...
-        'directConditionThreshold', 1e-10, 'lmConditionThreshold', 1e-12);
+        'directConditionThreshold', 1e-10, 'lmConditionThreshold', 1e-12, ...
+        'linearSystemScaling', 'none');
 
     result = solve_generic_newton(problem, opts);
 
@@ -103,6 +104,118 @@ function testIllConditionedSystemUsesLM(testCase)
     function measurement = measure()
         err = norm(target - J * x, inf);
         measurement = struct('errorVec', err, 'converged', err <= 1e-8, 'scalarError', err);
+    end
+end
+
+function testDescentGuardBacktracksAndAcceptsScaledStep(testCase)
+    x = 0;
+
+    problem = struct();
+    problem.linearize = @linearize;
+    problem.snapshot = @snapshot;
+    problem.restore = @restore;
+    problem.applyIncrement = @applyIncrement;
+    problem.measure = @measure;
+
+    opts = struct('maxIterations', 1, 'incrementTolerance', 1e-12, ...
+        'initialLambda', 1e-8, 'lambdaMin', 1e-12, 'lambdaMax', 1e6, ...
+        'lambdaGrow', 10, 'lambdaShrink', 0.3, ...
+        'directConditionThreshold', 1e-10, 'lmConditionThreshold', 1e-12, ...
+        'candidateBacktrackingFactor', 0.5, ...
+        'candidateBacktrackingMaxBacktracks', 4);
+
+    result = solve_generic_newton(problem, opts);
+
+    verifyTrue(testCase, result.stepAccepted);
+    verifyEqual(testCase, numel(result.history), 1);
+    verifyEqual(testCase, result.history.acceptedScale, 0.5, 'AbsTol', 0);
+    verifyEqual(testCase, result.history.backtracks, 1);
+    verifyEqual(testCase, x, 0.5, 'AbsTol', 1e-12);
+    verifyLessThan(testCase, result.scalarError, 1);
+
+    function [JCurrent, residual, meta] = linearize()
+        JCurrent = 1;
+        residual = 1 - x;
+        meta = struct('iterateNorm', abs(x));
+    end
+
+    function value = snapshot()
+        value = x;
+    end
+
+    function restore(snapshot)
+        x = snapshot;
+    end
+
+    function applyIncrement(~, delta, scale)
+        x = x + scale * delta;
+    end
+
+    function measurement = measure()
+        if x <= 0
+            err = 1;
+        elseif x < 1
+            err = 0.4;
+        else
+            err = 2;
+        end
+        measurement = struct('errorVec', err, 'converged', false, 'scalarError', err);
+    end
+end
+
+function testRequireDescentFalseAcceptsFiniteIncrease(testCase)
+    x = 0;
+
+    problem = struct();
+    problem.linearize = @linearize;
+    problem.snapshot = @snapshot;
+    problem.restore = @restore;
+    problem.applyIncrement = @applyIncrement;
+    problem.measure = @measure;
+
+    opts = struct('maxIterations', 1, 'incrementTolerance', 1e-12, ...
+        'initialLambda', 1e-8, 'lambdaMin', 1e-12, 'lambdaMax', 1e6, ...
+        'lambdaGrow', 10, 'lambdaShrink', 0.3, ...
+        'directConditionThreshold', 1e-10, 'lmConditionThreshold', 1e-12, ...
+        'requireDescent', false, ...
+        'candidateBacktrackingFactor', 0.5, ...
+        'candidateBacktrackingMaxBacktracks', 4);
+
+    result = solve_generic_newton(problem, opts);
+
+    verifyTrue(testCase, result.stepAccepted);
+    verifyEqual(testCase, result.history.acceptedScale, 1, 'AbsTol', 0);
+    verifyEqual(testCase, result.history.backtracks, 0);
+    verifyEqual(testCase, x, 1, 'AbsTol', 1e-12);
+    verifyEqual(testCase, result.scalarError, 2, 'AbsTol', 0);
+
+    function [JCurrent, residual, meta] = linearize()
+        JCurrent = 1;
+        residual = 1 - x;
+        meta = struct('iterateNorm', abs(x));
+    end
+
+    function value = snapshot()
+        value = x;
+    end
+
+    function restore(snapshot)
+        x = snapshot;
+    end
+
+    function applyIncrement(~, delta, scale)
+        x = x + scale * delta;
+    end
+
+    function measurement = measure()
+        if x <= 0
+            err = 1;
+        elseif x < 1
+            err = 0.4;
+        else
+            err = 2;
+        end
+        measurement = struct('errorVec', err, 'converged', false, 'scalarError', err);
     end
 end
 

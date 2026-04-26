@@ -583,12 +583,16 @@ classdef FMAM_ODE < handle
 
         function [A,residual,meta] = linearizeNewtonProblem(obj)
             ctx = obj.buildNewtonAssemblyContext();
-            [A,residual,indexMap,unknowns] = assemble_newton_linear_system(ctx);
+            assembly = assemble_newton_linear_system(ctx);
+            A = assembly.A;
+            residual = assembly.residual;
 
             meta = struct();
-            meta.indexMap = indexMap;
-            meta.unknowns = unknowns;
-            meta.iterateNorm = obj.currentUnknownInfNorm(unknowns);
+            meta.indexMap = assembly.indexMap;
+            meta.unknowns = assembly.unknowns;
+            meta.assemblyRows = assembly.rows;
+            meta.assemblyParameters = assembly.parameters;
+            meta.iterateNorm = obj.currentUnknownInfNorm(assembly.unknowns);
         end
 
         function measurement = measureNewtonState(obj)
@@ -621,6 +625,9 @@ classdef FMAM_ODE < handle
             opts.lambdaShrink = 0.3;
             opts.directConditionThreshold = 1e-10;
             opts.lmConditionThreshold = 1e-12;
+            opts.linearSystemScaling = 'row';
+            opts.requireDescent = true;
+            opts.acceptIncreaseTolerance = 1;
             opts.candidateBacktrackingFactor = 0.5;
             opts.candidateBacktrackingMaxBacktracks = 6;
         end
@@ -640,7 +647,8 @@ classdef FMAM_ODE < handle
                 'lambdaMax', newtonOpts.lambdaMax, ...
                 'lambdaGrow', newtonOpts.lambdaGrow, ...
                 'directConditionThreshold', newtonOpts.directConditionThreshold, ...
-                'lmConditionThreshold', newtonOpts.lmConditionThreshold);
+                'lmConditionThreshold', newtonOpts.lmConditionThreshold, ...
+                'linearSystemScaling', newtonOpts.linearSystemScaling);
         end
 
         function opts = normalizeNewtonOptions(obj,options,argName)
@@ -679,6 +687,18 @@ classdef FMAM_ODE < handle
             validateattributes(opts.candidateBacktrackingMaxBacktracks, {'numeric'}, ...
                 {'scalar', 'integer', 'nonnegative'}, ...
                 'FMAM_ODE', [argName '.candidateBacktrackingMaxBacktracks']);
+            opts.linearSystemScaling = FMAM_ODE.normalizeLinearSystemScaling( ...
+                opts.linearSystemScaling, argName);
+            validateattributes(opts.requireDescent, {'logical', 'numeric'}, ...
+                {'scalar'}, 'FMAM_ODE', [argName '.requireDescent']);
+            if isnumeric(opts.requireDescent) && ~isfinite(opts.requireDescent)
+                error('FMAM_ODE:InvalidNewtonOption', ...
+                    '%s.requireDescent must be a finite scalar logical or numeric value.', argName);
+            end
+            opts.requireDescent = logical(opts.requireDescent);
+            validateattributes(opts.acceptIncreaseTolerance, {'numeric'}, ...
+                {'scalar', 'finite', 'nonnegative'}, ...
+                'FMAM_ODE', [argName '.acceptIncreaseTolerance']);
         end
 
         function ctx = buildNewtonAssemblyContext(obj)
@@ -1035,7 +1055,7 @@ classdef FMAM_ODE < handle
                     'packedUnknown', obj.packUnknownState(meta,snapshot), ...
                     'dlambdaAccepted', dlambdaAccepted, ...
                     'newtonDiagnostics', diagnostics, ...
-                    'tangent', obj.computeContinuationTangent(A), ...
+                    'tangent', obj.computeContinuationTangent(A,meta), ...
                     'predictorUsed', predictorInfo.used, ...
                     'predictorFallbackCount', predictorInfo.fallbackCount, ...
                     'predictorMessage', predictorInfo.message), ...
@@ -1121,7 +1141,7 @@ classdef FMAM_ODE < handle
             end
         end
 
-        function tangent = computeContinuationTangent(obj,A)
+        function tangent = computeContinuationTangent(obj,A,meta)
             tangent = struct( ...
                 'available', false, ...
                 'vector', [], ...
@@ -1136,11 +1156,17 @@ classdef FMAM_ODE < handle
             end
 
             rhs = zeros(size(A,1),1);
-            rowIdx = obj.targetEquationRowIndices(size(A,1));
+            rowIdx = obj.assemblyTargetRowIndices(meta);
             if isempty(rowIdx)
                 tangent.available = true;
                 tangent.vector = zeros(size(A,2),1);
                 tangent.message = 'no active continuation targets';
+                return
+            end
+            if numel(rowIdx) ~= numel(obj.targetPath)
+                tangent.message = sprintf( ...
+                    'target row count %d does not match continuation target count %d', ...
+                    numel(rowIdx),numel(obj.targetPath));
                 return
             end
             rhs(rowIdx) = reshape([obj.targetPath.deltaValue],[],1);
@@ -1155,16 +1181,24 @@ classdef FMAM_ODE < handle
             tangent.message = solveResult.message;
         end
 
-        function rowIdx = targetEquationRowIndices(obj,numRows)
-            if obj.n_per == 0
+        function rowIdx = assemblyTargetRowIndices(~,meta)
+            if ~isstruct(meta) || ~isfield(meta,'assemblyRows')
+                error('FMAM_ODE:InvalidSolverMeta', ...
+                    'meta must contain assemblyRows for continuation tangent assembly.')
+            end
+
+            isTargetBlock = strcmp({meta.assemblyRows.kind}, 'targets');
+            targetBlocks = meta.assemblyRows(isTargetBlock);
+            if isempty(targetBlocks)
                 rowIdx = zeros(1,0);
                 return
             end
+            if numel(targetBlocks) ~= 1
+                error('FMAM_ODE:InvalidSolverMeta', ...
+                    'assemblyRows must contain exactly one targets block.')
+            end
 
-            trailingConstraints = max(0,2 * obj.truncationOrder - 1);
-
-            rowStart = numRows - trailingConstraints - obj.n_per + 1;
-            rowIdx = rowStart:(rowStart + obj.n_per - 1);
+            rowIdx = targetBlocks.idx;
         end
 
         function info = preparePredictorTrial(obj,acceptedState,acceptedHistory,lambdaTrial,dlambdaTrial,baseFailureCount)
@@ -1784,6 +1818,16 @@ classdef FMAM_ODE < handle
             names = fieldnames(overrides);
             for i = 1:numel(names)
                 base.(names{i}) = overrides.(names{i});
+            end
+        end
+
+        function value = normalizeLinearSystemScaling(value,argName)
+            value = char(string(value));
+            validValues = {'row', 'none'};
+            if ~any(strcmp(value, validValues))
+                error('FMAM_ODE:InvalidNewtonOption', ...
+                    '%s.linearSystemScaling must be one of: %s.', ...
+                    argName, strjoin(validValues, ', '));
             end
         end
 

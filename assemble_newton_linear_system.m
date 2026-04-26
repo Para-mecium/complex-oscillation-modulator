@@ -1,4 +1,4 @@
-function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
+function assembly = assemble_newton_linear_system(ctx)
 %ASSEMBLE_NEWTON_LINEAR_SYSTEM Build the Newton matrix and residual vector.
 
     p_Psi_init_ = ctx.p_Psi_init;
@@ -52,10 +52,12 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
     end
     A = zeros(lastIdx, lastIdx);
     res = zeros(lastIdx, 1);
+    rows = struct('kind', {}, 'idx', {}, 'meta', {});
 
     idxCollum = 1:max([indexMap.params(:); indexMap.p_Psi(:); indexMap.q_Psi(:); ...
         indexMap.p_var(:); indexMap.q_var(:)]);
     idxLastRow = 0;
+    blockStart = idxLastRow + 1;
     for i = 1:N
         [coe_params, coe_p_Psi, coe_q_Psi, coe_p_var, coe_q_var] = ...
             FMAM_ODE.delta_coe_system(system, Derivative_var, Psi, TS_var, ...
@@ -77,7 +79,10 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
         idxLastRow = idxLastRow + (2 * MVar + 1);
 
     end
+    rows(end + 1) = make_row_metadata('system', blockStart:idxLastRow, ...
+        struct('dimVar', N, 'truncationOrder', MVar));
 
+    blockStart = idxLastRow + 1;
     for i = 1:N
         [needMax, needMin] = fmam_target_rules('needs_variable_extrema', targetCtx, ctx.items_perturb, i);
         idx_phi_max = indexMap.varPhiMax(i);
@@ -120,7 +125,10 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
         end
         idxLastRow = idxLastRow + 1;
     end
+    rows(end + 1) = make_row_metadata('variable_extrema', blockStart:idxLastRow, ...
+        struct('dimVar', N));
 
+    blockStart = idxLastRow + 1;
     for k = 1:n
         [needMax, needMin] = fmam_target_rules('needs_observable_extrema', targetCtx, ctx.items_perturb, k);
         idx_phi_max = indexMap.obsPhiMax(k);
@@ -164,26 +172,37 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
         end
         idxLastRow = idxLastRow + 1;
     end
+    rows(end + 1) = make_row_metadata('observable_extrema', blockStart:idxLastRow, ...
+        struct('dimObs', n));
 
     idx_params_fix = 1:m;
     idx_params_fix(Coe_Controlled) = [];
+    blockStart = idxLastRow + 1;
     for i = idx_params_fix
         A(idxLastRow + 1, i) = 1;
         res(idxLastRow + 1) = 0;
         idxLastRow = idxLastRow + 1;
     end
+    rows(end + 1) = make_row_metadata('fixed_params', blockStart:idxLastRow, ...
+        struct('paramIndices', idx_params_fix));
 
-    assembly = build_target_row_assembly(indexMap, parameters, p_Psi, q_Psi, ...
+    targetAssembly = build_target_row_assembly(indexMap, parameters, p_Psi, q_Psi, ...
         p_var, q_var, Derivative_obs, size(A, 2));
+    blockStart = idxLastRow + 1;
     for j = 1:numel(ctx.items_perturb)
         item_per = ctx.items_perturb(j);
         [targetRow, targetResidual] = fmam_target_rules('target_row', ...
-            targetCtx, item_per, ctx.targetCurr(j), assembly);
+            targetCtx, item_per, ctx.targetCurr(j), targetAssembly);
         A(idxLastRow + 1, :) = targetRow;
         res(idxLastRow + 1) = targetResidual;
         idxLastRow = idxLastRow + 1;
     end
+    targetMeta = struct();
+    targetMeta.items = ctx.items_perturb;
+    targetMeta.targetCurr = ctx.targetCurr;
+    rows(end + 1) = make_row_metadata('targets', blockStart:idxLastRow, targetMeta);
 
+    blockStart = idxLastRow + 1;
     if ctx.psiUpdateMode
         PV = ctx.PV;
         if strcmpi(PV.name, 'var')
@@ -248,11 +267,32 @@ function [A, res, indexMap, unknowns] = assemble_newton_linear_system(ctx)
         res(idxLastRow + 1) = phaseResidual;
         idxLastRow = idxLastRow + 1;
     end
+    gaugeMeta = struct();
+    gaugeMeta.psiUpdateMode = ctx.psiUpdateMode;
+    gaugeMeta.PV = ctx.PV;
+    rows(end + 1) = make_row_metadata('gauge', blockStart:idxLastRow, gaugeMeta);
 
     if idxLastRow ~= size(A, 1)
         error('FMAM_ODE:AssemblySizeMismatch', ...
             'Newton assembly produced %d rows for %d unknowns.', idxLastRow, size(A, 1));
     end
+
+    assembly = struct();
+    assembly.A = A;
+    assembly.residual = res;
+    assembly.indexMap = indexMap;
+    assembly.unknowns = unknowns;
+    assembly.rows = rows;
+    assembly.parameters = struct( ...
+        'controlled', ctx.items_controlled, ...
+        'fixed', idx_params_fix);
+end
+
+function row = make_row_metadata(kind, idx, meta)
+    row = struct();
+    row.kind = kind;
+    row.idx = idx;
+    row.meta = meta;
 end
 
 function [row,residual] = build_frozen_phase_condition_row(indexMap, ...
@@ -317,15 +357,15 @@ function targetCtx = build_target_rules_context(ctx)
         ctx.obs,targetCtx.solver,discretization);
 end
 
-function assembly = build_target_row_assembly(indexMap, parameters, p_Psi, q_Psi, ...
+function targetAssembly = build_target_row_assembly(indexMap, parameters, p_Psi, q_Psi, ...
         p_var, q_var, Derivative_obs, numUnknown)
-    assembly = struct();
-    assembly.indexMap = indexMap;
-    assembly.parameters = parameters;
-    assembly.p_Psi = p_Psi;
-    assembly.q_Psi = q_Psi;
-    assembly.p_var = p_var;
-    assembly.q_var = q_var;
-    assembly.Derivative_obs = Derivative_obs;
-    assembly.numUnknown = numUnknown;
+    targetAssembly = struct();
+    targetAssembly.indexMap = indexMap;
+    targetAssembly.parameters = parameters;
+    targetAssembly.p_Psi = p_Psi;
+    targetAssembly.q_Psi = q_Psi;
+    targetAssembly.p_var = p_var;
+    targetAssembly.q_var = q_var;
+    targetAssembly.Derivative_obs = Derivative_obs;
+    targetAssembly.numUnknown = numUnknown;
 end
