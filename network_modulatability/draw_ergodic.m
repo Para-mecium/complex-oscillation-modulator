@@ -1,26 +1,30 @@
 clear
 clc
 
-netName = 'ER';
+netName = 'BA';
 dynamicName = 'FHN';
 propname = 'amp';
 weight_per = 0.3;
+N = 100;
+sourceSequenceIndex = 1;
 threshold = 0.05;
 n_target = 50;
 
 scriptDir = fileparts(mfilename('fullpath'));
 dataFile = fullfile( ...
-    scriptDir, 'Ergodic data', ...
-    [dynamicName ' (net = ' netName ', weight_per = ' num2str(weight_per) ')' '.mat']);
+    scriptDir, 'Ergodic data', sprintf('N = %d', N), ...
+    sprintf('%s (net = %s, source_seq = %d, weight_per = %s).mat', ...
+    dynamicName, netName, sourceSequenceIndex, num2str(weight_per)));
 figDir = fullfile(scriptDir, 'temp_fig');
 ensure_directory(figDir);
 
 data = networkexp.load_ergodic_results(dataFile);
-N = data.nodeCount;
 prop_ori = get_primary_observable(data.baseline.observables, propname, N);
+sourceNodeOrder = data.sourceNodeSequence.nodeOrder;
 
 proportion_mat = NaN(N, N);
 for nTarget = 1:N
+    targetNodes = sourceNodeOrder(1:nTarget);
     for idxRepeat = 1:numel(data.repeats)
         samples = data.repeats(idxRepeat).plottableSamples;
         if isempty(samples)
@@ -30,7 +34,7 @@ for nTarget = 1:N
         for i = 1:numel(samples)
             sample_i = get_primary_observable(samples(i).observables, propname, N);
             proportion(i) = sum( ...
-                ((sample_i(1:nTarget) - prop_ori(1:nTarget)) ./ prop_ori(1:nTarget)) > threshold) / nTarget;
+                ((sample_i(targetNodes) - prop_ori(targetNodes)) ./ prop_ori(targetNodes)) > threshold) / nTarget;
         end
         proportion_mat(idxRepeat, nTarget) = mean(proportion);
     end
@@ -46,12 +50,13 @@ ylabel('Number of edges modulated');
 xlabel('Number of targets');
 
 proportion_sample = [];
+targetNodes = sourceNodeOrder(1:n_target);
 for idxRepeat = 1:numel(data.repeats)
     samples = data.repeats(idxRepeat).plottableSamples;
     for i = 1:numel(samples)
         sample_i = get_primary_observable(samples(i).observables, propname, N);
         modulationRate = sum( ...
-            ((sample_i(1:n_target) - prop_ori(1:n_target)) ./ prop_ori(1:n_target)) > threshold) / n_target;
+            ((sample_i(targetNodes) - prop_ori(targetNodes)) ./ prop_ori(targetNodes)) > threshold) / n_target;
         proportion_sample = [proportion_sample; idxRepeat, modulationRate]; %#ok<AGROW>
     end
 end
@@ -75,7 +80,8 @@ width = 6;
 height = 6 * 0.75;
 fig.PaperSize = [width, height];
 fig.PaperPosition = [0, 0, width, height];
-figname = ['Scatter_' dynamicName '_n_target = ' num2str(n_target) '_' netName];
+figname = ['Scatter_' dynamicName '_n_target = ' num2str(n_target) ...
+    '_source_seq = ' num2str(sourceSequenceIndex) '_' netName];
 print(fig, fullfile(figDir, [figname '.pdf']), '-dpdf');
 
 function values = get_primary_observable(observables, propname, nodeCount)

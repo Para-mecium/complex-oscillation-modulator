@@ -3,6 +3,7 @@ clc
 
 dynamicName = 'GRN';
 netName = 'ER';
+N = 100;
 n_per = 50;
 enableCustomPlotSettings = false;
 color_ori = [0, 0.4470, 0.7410];
@@ -14,11 +15,12 @@ figDir = fullfile(scriptDir, 'temp_fig');
 ensure_directory(figDir);
 
 baseline = networkexp.load_single_result( ...
-    fullfile(folderName, ['TS_init_' dynamicName ' (' netName ').mat']));
+    fullfile(folderName, sprintf('TS_init_%s (%s, N = %d).mat', ...
+    dynamicName, netName, N)));
 perturbed = networkexp.load_single_result( ...
-    fullfile(folderName, ['TS_per_' num2str(n_per) '_' dynamicName ' (' netName ').mat']));
+    fullfile(folderName, sprintf('TS_per_%d_%s (%s, N = %d).mat', ...
+    n_per, dynamicName, netName, N)));
 
-N = baseline.nodeCount;
 amp_v_origin = baseline.amplitude(1:N);
 amp_v = perturbed.amplitude(1:N);
 plotSettings = get_plot_settings(dynamicName, enableCustomPlotSettings);

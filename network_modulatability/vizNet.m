@@ -1,5 +1,6 @@
 dynamicName = 'FHN';
 netName = 'ER';
+N = 100;
 n_per = 50;
 mksize = 0.5;
 arsize = 2;
@@ -11,9 +12,11 @@ figDir = fullfile(scriptDir, 'temp_fig');
 ensure_directory(figDir);
 
 baseline = networkexp.load_single_result( ...
-    fullfile(folderName, ['TS_init_' dynamicName ' (' netName ').mat']));
+    fullfile(folderName, sprintf('TS_init_%s (%s, N = %d).mat', ...
+    dynamicName, netName, N)));
 perturbed = networkexp.load_single_result( ...
-    fullfile(folderName, ['TS_per_' num2str(n_per) '_' dynamicName ' (' netName ').mat']));
+    fullfile(folderName, sprintf('TS_per_%d_%s (%s, N = %d).mat', ...
+    n_per, dynamicName, netName, N)));
 
 G = digraph(baseline.weightMatrix);
 figure

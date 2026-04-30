@@ -3,27 +3,28 @@ clc
 
 %% User settings
 settings = struct();
-settings.randomSeed = 0;
+settings.randomSeed = 1;
 settings.useParallel = true;
-settings.numWorkers = 6;
+settings.numWorkers = 8;
 settings.numRepeat = 100;
+settings.numSourceNodeSequences = 5;
 % Options: 'fixedNetwork' or 'independentNetworkDraws'
 settings.repeatMode = 'fixedNetwork';
 % Options: 'fixedAttempts' or 'untilSuccesses'
 settings.repeatAccountingMode = 'fixedAttempts';
 settings.maxAttemptsMultiplier = 10;
 % Options: 'prefix', 'uniformRandomWithoutReplacement', 'uniformRandomWithReplacement'
-settings.perturbedNodeSelectionMode = 'prefix';
+settings.perturbedNodeSelectionMode = 'uniformRandomWithoutReplacement';
 % Options: 'prefix', 'uniformRandomWithoutReplacement', 'uniformRandomWithReplacement'
-settings.inputNodeSelectionMode = 'uniformRandomWithReplacement';
+settings.inputNodeSelectionMode = 'uniformRandomWithoutReplacement';
 settings.weightPer = 0.3;
 settings.outputSubdir = 'Ergodic data';
 settings.solverName = 'ode15s';
-settings.searchWindow = 5000;
+settings.searchWindow = 3000;
 % Options: any subset/permutation of {'SW', 'BA', 'ER'}
 settings.nets = {'ER','BA','SW'};
 settings.network = struct( ...
-    'N', 100, ...
+    'N', 50, ...
     'degAvg', 5, ...
     'K', 1, ...
     'baSeedDegree', 5, ...
