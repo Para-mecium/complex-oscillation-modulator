@@ -12,13 +12,9 @@ addpath(repoDir, '-begin');
 addpath(circuitDir, '-begin');
 addpath(scriptDir, '-begin');
 
-outputDir = fullfile(scriptDir, 'results', 'proposed_method');
-if ~isfolder(outputDir)
-    mkdir(outputDir);
-end
-
 targetDataFile = fullfile(parameterInferenceDir, 'initData_circuit.mat');
 baseDataFile = fullfile(parameterInferenceDir, 'initData_ODE.mat');
+lossName = 'property_difference';
 
 targetData = load(targetDataFile);
 initData = load(baseDataFile);
@@ -113,10 +109,17 @@ poFeatures = evaluate_orbit_features(orbit, [], [], struct());
 userConfig = struct();
 userConfig.targetDataFile = targetDataFile;
 userConfig.baseDataFile = baseDataFile;
+userConfig.lossName = lossName;
 userConfig.forwardOptions.poOptions.solver_tol = poOptions.solver_tol;
 config = build_config(userConfig);
 
-bestLoss = loss_function(orbit, config.targetOrbit, config.lossOptions);
+outputDir = result_method_loss_dir(config.resultDir, 'proposed_method', config.lossName);
+if ~isfolder(outputDir)
+    mkdir(outputDir);
+end
+
+bestLoss = loss_function(orbit, config.targetOrbit, config.lossOptions, ...
+    poFeatures, config.targetFeatures);
 activeParams = Parameters(config.activeIndex);
 
 result = struct();

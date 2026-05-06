@@ -1,4 +1,4 @@
-function loss = loss_function(candidateOrbit, targetOrbit, options)
+function loss = loss_function(candidateOrbit, targetOrbit, options, candidateFeatures, targetFeatures)
 if nargin < 3 || isempty(options)
     options = struct();
 end
@@ -18,6 +18,9 @@ switch lower(options.name)
         loss = loss_mse(candidateOrbit, targetOrbit, options);
     case 'rmse'
         loss = loss_rmse(candidateOrbit, targetOrbit, options);
+    case {'property_difference', 'property_diff'}
+        loss = loss_property_difference( ...
+            candidateOrbit, targetOrbit, options, candidateFeatures, targetFeatures);
     otherwise
         error('loss_function:UnknownLoss', 'Unknown loss name: %s.', options.name);
 end
@@ -51,6 +54,24 @@ function loss = loss_rmse(candidateOrbit, targetOrbit, options)
 diffY = candidateY - targetY;
 loss = sqrt(mean(diffY(:).^2));
 loss = add_period_loss(loss, candidateOrbit, targetOrbit, options);
+end
+
+function loss = loss_property_difference(candidateOrbit, targetOrbit, options, ...
+    candidateFeatures, targetFeatures)
+stateIndex = options.propertyStateIndex;
+candidateProps = [ ...
+    candidateFeatures.period, ...
+    reshape(candidateFeatures.state.amplitude(stateIndex), 1, [])];
+targetProps = [ ...
+    targetFeatures.period, ...
+    reshape(targetFeatures.state.amplitude(stateIndex), 1, [])];
+
+scaleFloor = options.propertyScaleFloor;
+scale = max(abs(targetProps), scaleFloor);
+relativeDiff = (candidateProps - targetProps) ./ scale;
+
+weights = options.propertyWeights;
+loss = sqrt(mean((weights .* relativeDiff).^2));
 end
 
 

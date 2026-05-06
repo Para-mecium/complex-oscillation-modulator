@@ -35,6 +35,9 @@ config.lossOptions.name = config.lossName;
 config.lossOptions.compareNumPoints = 500;
 config.lossOptions.periodWeight = 0;
 config.lossOptions.phaseAlignment = true;
+config.lossOptions.propertyStateIndex = 1:3;
+config.lossOptions.propertyWeights = ones(1, 4);
+config.lossOptions.propertyScaleFloor = 1e-12;
 
 config.penaltyLoss = 1e30;
 config.forwardOptions = struct();

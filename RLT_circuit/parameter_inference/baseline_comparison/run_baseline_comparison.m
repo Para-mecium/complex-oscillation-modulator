@@ -4,8 +4,8 @@ clc
 %% Local configuration
 % evalBudget is the total number of calls to circuit_forward_orbit.
 % If refinement is enabled, the search budget is evalBudget - refinementBudget.
-evalBudget = 500;
-refinementBudget = 150;
+evalBudget = 1000;
+refinementBudget = 300;
 refinementTopK = 2;
 randomSeeds = 1:100;
 numWorkers = 8;
@@ -16,7 +16,7 @@ methods = { ...
     struct('name', 'sobol', 'refinement', 'powell'), ...
     struct('name', 'pso', 'refinement', 'none')};
 
-lossName = 'relative_l2_orbit';
+lossName = 'property_difference';
 penaltyLoss = 1e30;
 saveBestOrbit = true;
 odeSolverTolerance = struct('RelTol', 1e-6, 'AbsTol', 1e-6);
@@ -96,7 +96,8 @@ else
     end
 end
 
-summaryFile = fullfile(config.resultDir, 'baseline_comparison_summary.mat');
+summaryFile = fullfile(config.resultDir, ...
+    sprintf('baseline_comparison_summary_%s.mat', result_name_token(config.lossName)));
 configSummary = config_summary(config);
 save(summaryFile, 'summaryRows', 'configSummary');
 fprintf('Saved baseline comparison summary: %s\n', summaryFile);
@@ -175,7 +176,7 @@ try
     result.totalBestSoFarLosses = build_total_best_so_far(result);
     result.totalTimeSoFar = build_total_time_so_far(result);
 
-    methodResultDir = fullfile(config.resultDir, methodName);
+    methodResultDir = result_method_loss_dir(config.resultDir, methodName, config.lossName);
     if ~isfolder(methodResultDir)
         mkdir(methodResultDir);
     end

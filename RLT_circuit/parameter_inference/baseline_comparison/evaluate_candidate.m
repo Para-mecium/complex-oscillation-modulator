@@ -20,7 +20,8 @@ try
         return
     end
 
-    loss = loss_function(forwardResult.orbit, config.targetOrbit, config.lossOptions);
+    loss = loss_function(forwardResult.orbit, config.targetOrbit, ...
+        config.lossOptions, forwardResult.features, config.targetFeatures);
     if ~isfinite(loss)
         evalOut.msg = 'Non-finite loss.';
         return

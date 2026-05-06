@@ -3,7 +3,13 @@ clc
 
 scriptDir = fileparts(mfilename('fullpath'));
 resultsDir = fullfile(scriptDir, 'results');
-summaryFile = fullfile(resultsDir, 'baseline_comparison_summary.mat');
+lossName = 'property_difference';
+summaryFile = fullfile(resultsDir, ...
+    sprintf('baseline_comparison_summary_%s.mat', result_name_token(lossName)));
+legacySummaryFile = fullfile(resultsDir, 'baseline_comparison_summary.mat');
+if ~isfile(summaryFile) && isfile(legacySummaryFile)
+    summaryFile = legacySummaryFile;
+end
 
 if ~isfile(summaryFile)
     error('draw_baseline_comparison:MissingSummary', ...
@@ -13,9 +19,12 @@ end
 summaryData = load(summaryFile);
 summaryRows = summaryData.summaryRows;
 config = build_config(summaryData.configSummary);
+lossName = config.lossName;
 targetOrbit = config.targetOrbit;
 
-records = [load_proposed_records(resultsDir), load_result_records(summaryRows)];
+records = [ ...
+    load_proposed_records(resultsDir, lossName), ...
+    load_result_records(summaryRows, resultsDir, lossName)];
 if isempty(records)
     error('draw_baseline_comparison:NoResults', ...
         'No successful baseline result files found in %s.', resultsDir);
@@ -130,7 +139,7 @@ for stateIdx = 1:stateCount
 end
 
 %% Local functions
-function records = load_result_records(summaryRows)
+function records = load_result_records(summaryRows, resultsDir, lossName)
 records = struct( ...
     'methodName', {}, ...
     'refinementMethod', {}, ...
@@ -145,11 +154,16 @@ records = struct( ...
 
 for i = 1:numel(summaryRows)
     row = summaryRows(i);
-    if ~strcmp(row.status, 'success') || isempty(row.resultFile) || ~isfile(row.resultFile)
+    if ~strcmp(row.status, 'success') || isempty(row.resultFile)
         continue
     end
 
-    fileData = load(row.resultFile);
+    resultFile = resolve_result_file(row, resultsDir, lossName);
+    if ~isfile(resultFile)
+        continue
+    end
+
+    fileData = load(resultFile);
     result = fileData.result;
     if isfield(result, 'refinement') && isfield(result.refinement, 'method')
         refinementMethod = result.refinement.method;
@@ -173,7 +187,22 @@ for i = 1:numel(summaryRows)
 end
 end
 
-function records = load_proposed_records(resultsDir)
+function resultFile = resolve_result_file(row, resultsDir, lossName)
+resultFile = row.resultFile;
+if isfile(resultFile)
+    return
+end
+
+[~, fileName, fileExt] = fileparts(resultFile);
+candidateFile = fullfile( ...
+    result_method_loss_dir(resultsDir, row.methodName, lossName), ...
+    [fileName fileExt]);
+if isfile(candidateFile)
+    resultFile = candidateFile;
+end
+end
+
+function records = load_proposed_records(resultsDir, lossName)
 records = struct( ...
     'methodName', {}, ...
     'refinementMethod', {}, ...
@@ -186,7 +215,9 @@ records = struct( ...
     'bestActiveParams', {}, ...
     'bestOrbit', {});
 
-proposedFile = fullfile(resultsDir, 'proposed_method', 'proposed_method_result.mat');
+proposedFile = fullfile( ...
+    result_method_loss_dir(resultsDir, 'proposed_method', lossName), ...
+    'proposed_method_result.mat');
 if ~isfile(proposedFile)
     return
 end
