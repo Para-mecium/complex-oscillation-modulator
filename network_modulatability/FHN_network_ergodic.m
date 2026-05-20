@@ -5,7 +5,7 @@ clc
 settings = struct();
 settings.randomSeed = 1;
 settings.useParallel = true;
-settings.numWorkers = 8;
+settings.numWorkers = 6;
 settings.numRepeat = 100;
 settings.numSourceNodeSequences = 5;
 % Options: 'fixedNetwork' or 'independentNetworkDraws'
@@ -20,11 +20,11 @@ settings.inputNodeSelectionMode = 'uniformRandomWithoutReplacement';
 settings.weightPer = 0.3;
 settings.outputSubdir = 'Ergodic data';
 settings.solverName = 'ode15s';
-settings.searchWindow = 3000;
+settings.searchWindow = 5000;
 % Options: any subset/permutation of {'SW', 'BA', 'ER'}
 settings.nets = {'ER','BA','SW'};
 settings.network = struct( ...
-    'N', 50, ...
+    'N', 200, ...
     'degAvg', 5, ...
     'K', 1, ...
     'baSeedDegree', 5, ...

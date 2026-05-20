@@ -10,7 +10,7 @@ targetNodes = pick_nodes( ...
     numNodes, nPerturbedEdges, settings.inputNodeSelectionMode, targetSeed);
 
 linearIndices = sub2ind([numNodes, numNodes], sourceNodes(:), targetNodes(:));
-mask = zeros(numNodes, numNodes);
+mask = sparse(numNodes, numNodes);
 mask(linearIndices) = 1;
 
 perturbation = struct( ...

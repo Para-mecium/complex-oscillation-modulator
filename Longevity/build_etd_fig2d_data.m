@@ -14,7 +14,7 @@ addpath(fullfile(scriptDir, 'SDE_simulation'));
 
 %% Simulation settings
 distributionSeeds = 1001:1100;
-warmupT = 600;
+warmupT = 1000;
 measureT = 60;
 dt = 0.01;
 sigma = 0.1;

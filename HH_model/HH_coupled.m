@@ -20,7 +20,7 @@ seed = 1;
 rng(seed, 'twister');
 
 % Coupling type: 'gap' or 'synapse'.
-couplingType = 'synapse';
+couplingType = 'gap';
 
 % Shared HH parameters written in vector form.
 C0 = 1;
@@ -78,10 +78,10 @@ t_TS_plot_span = 2*T_start;
 p = struct();
 p.couplingType = couplingType;
 
-G_scale = 1;
+G_scale = 0.01;
 if N > 1
     % p.G = G_scale * rand(N,N);
-    p.G = G_scale * [0 1;10 0];
+    p.G = G_scale * [0 1;5 0];
 end
 
 p.C = C0 * ones(N, 1);

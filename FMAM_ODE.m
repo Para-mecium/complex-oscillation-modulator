@@ -627,7 +627,7 @@ classdef FMAM_ODE < handle
             opts.lmConditionThreshold = 1e-12;
             opts.linearSystemScaling = 'row';
             opts.requireDescent = true;
-            opts.acceptIncreaseTolerance = 1;
+            opts.acceptIncreaseTolerance = 1e5;
             opts.candidateBacktrackingFactor = 0.5;
             opts.candidateBacktrackingMaxBacktracks = 6;
         end

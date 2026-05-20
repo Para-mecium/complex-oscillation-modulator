@@ -31,6 +31,7 @@ repoDir = fileparts(circuitDir);
 
 addpath(repoDir, '-begin');
 addpath(circuitDir, '-begin');
+addpath(parameterInferenceDir, '-begin');
 addpath(scriptDir, '-begin');
 
 userConfig = struct();
@@ -118,6 +119,7 @@ end
 function row = run_one_task(task, config, summaryTemplate, disableProgress)
 addpath(config.repoDir, '-begin');
 addpath(config.circuitDir, '-begin');
+addpath(config.parameterInferenceDir, '-begin');
 addpath(config.scriptDir, '-begin');
 
 methodSpec = task.methodSpec;

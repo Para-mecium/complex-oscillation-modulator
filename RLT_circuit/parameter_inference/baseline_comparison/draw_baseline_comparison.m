@@ -1,9 +1,19 @@
 clear
 clc
-
+%%
 scriptDir = fileparts(mfilename('fullpath'));
+parameterInferenceDir = fileparts(scriptDir);
+circuitDir = fileparts(parameterInferenceDir);
+repoDir = fileparts(circuitDir);
 resultsDir = fullfile(scriptDir, 'results');
-lossName = 'property_difference';
+lossName = 'relative_l2_orbit';
+proposedSensitivityScale = 1;
+fontSize = 9;
+numTargetScatterPoints = 50;
+proposedLineWidth = 0.5;
+baselineLineWidth = 0.5;
+baselineLineStyles = {'-', '-', '--', '-.', ':'};
+addpath(fullfile(repoDir, 'PO_extract'), '-begin');
 summaryFile = fullfile(resultsDir, ...
     sprintf('baseline_comparison_summary_%s.mat', result_name_token(lossName)));
 legacySummaryFile = fullfile(resultsDir, 'baseline_comparison_summary.mat');
@@ -32,6 +42,21 @@ end
 
 [groupKeys, groupLabels, groupIndex] = unique_groups(records);
 colors = lines(numel(groupKeys));
+proposedGroup = is_proposed_group(groupKeys, groupLabels);
+axisPadding = 0.08;
+finalLossesByGroup = group_record_values(records, groupIndex, numel(groupKeys), 'finalLoss');
+runtimesByGroup = group_record_values(records, groupIndex, numel(groupKeys), 'runtime');
+figure2FinalLossesByGroup = finalLossesByGroup;
+runtimeFinalLossesByGroup = finalLossesByGroup;
+runtimeRuntimesByGroup = runtimesByGroup;
+proposedSensitivity = load_proposed_sensitivity_runtime_loss( ...
+    parameterInferenceDir, config, proposedSensitivityScale);
+proposedGroupIdx = find(proposedGroup, 1, 'first');
+if ~isempty(proposedGroupIdx) && ~isempty(proposedSensitivity.successRuntime)
+    figure2FinalLossesByGroup{proposedGroupIdx} = proposedSensitivity.successLoss;
+    runtimeFinalLossesByGroup{proposedGroupIdx} = proposedSensitivity.successLoss;
+    runtimeRuntimesByGroup{proposedGroupIdx} = proposedSensitivity.successRuntime;
+end
 
 %% Figure 1: Best-so-far loss vs evaluations
 figure
@@ -40,6 +65,10 @@ grid on
 box on
 
 for groupIdx = 1:numel(groupKeys)
+    if proposedGroup(groupIdx)
+        continue
+    end
+
     groupRecords = records(groupIndex == groupIdx);
     curves = collect_curves(groupRecords);
     evalAxis = 1:size(curves, 2);
@@ -47,57 +76,63 @@ for groupIdx = 1:numel(groupKeys)
     q1Curve = row_nan_percentile(curves, 25);
     q3Curve = row_nan_percentile(curves, 75);
 
-    semilogy(evalAxis, medianCurve, 'LineWidth', 1.5, ...
+    semilogy(evalAxis, medianCurve, '-', 'LineWidth', 1, ...
         'Color', colors(groupIdx, :), 'DisplayName', groupLabels{groupIdx});
-    semilogy(evalAxis, q1Curve, ':', 'LineWidth', 0.75, ...
+    semilogy(evalAxis, q1Curve, '--', 'LineWidth', 0.5, ...
         'Color', colors(groupIdx, :), 'HandleVisibility', 'off');
-    semilogy(evalAxis, q3Curve, ':', 'LineWidth', 0.75, ...
+    semilogy(evalAxis, q3Curve, '--', 'LineWidth', 0.5, ...
         'Color', colors(groupIdx, :), 'HandleVisibility', 'off');
 end
 
 xlabel('Forward evaluations')
 ylabel('Best-so-far loss')
-title('Best-so-far loss vs evaluations')
-legend('Location', 'best')
-set(gca, 'YScale', 'log')
+set(gca, 'FontName', 'Arial', 'FontSize', fontSize, 'YScale', 'log')
+ylim(plotted_y_limits(gca, axisPadding, true))
 
 %% Figure 2: Final best loss across seeds
-figure
-hold on
-grid on
-box on
-
+fig2 = figure('Color', 'w');
+ax2 = axes(fig2);
+hold(ax2, 'on')
+grid(ax2, 'on')
+box(ax2, 'on')
+rng(1, 'twister')
 for groupIdx = 1:numel(groupKeys)
-    groupRecords = records(groupIndex == groupIdx);
-    finalLosses = [groupRecords.finalLoss].';
-    draw_distribution_box(groupIdx, finalLosses, colors(groupIdx, :));
+    draw_distribution_violin(ax2, groupIdx, ...
+        figure2FinalLossesByGroup{groupIdx}, colors(groupIdx, :));
 end
-
-xlim([0.5, numel(groupKeys) + 0.5])
-set(gca, 'XTick', 1:numel(groupKeys), 'XTickLabel', groupLabels, ...
-    'XTickLabelRotation', 30, 'YScale', 'log')
-ylabel('Final best loss')
-title('Final best loss across seeds')
+set(ax2, ...
+    'XTick', 1:numel(groupLabels), ...
+    'FontName', 'Arial', ...
+    'FontSize', fontSize, ...
+    'YScale', 'log')
+xlim(ax2, [0.5, numel(groupLabels) + 0.5])
+ylim(ax2, plotted_y_limits(ax2, axisPadding, true))
+ylabel(ax2, 'Final best loss', 'FontName', 'Arial')
 
 %% Figure 3: Runtime vs final best loss
-figure
-hold on
-grid on
-box on
-
+fig3 = figure('Color', 'w');
+[mainAx3, failureAx3] = create_runtime_axes(fig3);
 for groupIdx = 1:numel(groupKeys)
-    groupRecords = records(groupIndex == groupIdx);
-    runtimes = [groupRecords.runtime].';
-    finalLosses = [groupRecords.finalLoss].';
-    scatter(runtimes, finalLosses, 36, colors(groupIdx, :), 'filled', ...
-        'MarkerFaceAlpha', 0.75, 'DisplayName', groupLabels{groupIdx});
+    finalLosses = runtimeFinalLossesByGroup{groupIdx};
+    runtimes = runtimeRuntimesByGroup{groupIdx};
+    mask = isfinite(finalLosses) & finalLosses > 0 & ...
+        isfinite(runtimes) & runtimes > 0;
+    scatter(mainAx3, runtimes(mask), finalLosses(mask), 5, colors(groupIdx, :), ...
+        'filled', 'MarkerEdgeColor', 'none', ...
+        'MarkerFaceAlpha', 0.65, ...
+        'HandleVisibility', 'off');
 end
-
-xlabel('Runtime (s)')
-ylabel('Final best loss')
-title('Runtime vs final best loss')
-set(gca, 'YScale', 'log')
-legend('Location', 'best')
+if ~isempty(proposedGroupIdx) && ~isempty(proposedSensitivity.failedRuntime)
+    scatter(failureAx3, proposedSensitivity.failedRuntime, ...
+        0.5 * ones(size(proposedSensitivity.failedRuntime)), 5, ...
+        colors(proposedGroupIdx, :), 'x', 'LineWidth', 0.5, ...
+        'HandleVisibility', 'off');
+end
+runtimeXValues = [vertcat(runtimeRuntimesByGroup{:}); proposedSensitivity.failedRuntime(:)];
+runtimeYValues = vertcat(runtimeFinalLossesByGroup{:});
+runtimeYValues = runtimeYValues(isfinite(runtimeYValues) & runtimeYValues > 0);
+format_runtime_axes(mainAx3, failureAx3, runtimeXValues, runtimeYValues, axisPadding, fontSize, ...
+    'Runtime (s)', 'Final best loss');
 
 %% Figure 4: Best parameter time series comparison
 figure
@@ -106,6 +141,9 @@ representatives = select_group_representatives(records, groupIndex, numel(groupK
 plotPhase = linspace(0, 1, config.lossOptions.compareNumPoints + 1).';
 plotPhase(end) = [];
 targetY = resample_orbit_y(targetOrbit, plotPhase);
+targetScatterPhase = linspace(0, 1, numTargetScatterPoints + 1).';
+targetScatterPhase(end) = [];
+targetScatterY = resample_orbit_y(targetOrbit, targetScatterPhase);
 
 for stateIdx = 1:stateCount
     subplot(stateCount, 1, stateIdx)
@@ -113,9 +151,7 @@ for stateIdx = 1:stateCount
     grid on
     box on
 
-    plot(plotPhase, targetY(:, stateIdx), 'k-', 'LineWidth', 1.8, ...
-        'DisplayName', 'target');
-
+    baselineStyleIdx = 0;
     for groupIdx = 1:numel(groupKeys)
         record = representatives(groupIdx);
         if isempty(record.bestOrbit)
@@ -124,18 +160,85 @@ for stateIdx = 1:stateCount
 
         candidateY = resample_orbit_y(record.bestOrbit, plotPhase);
         candidateY = align_candidate_phase(candidateY, targetY);
-        plot(plotPhase, candidateY(:, stateIdx), 'LineWidth', 1.1, ...
-            'Color', colors(groupIdx, :), 'DisplayName', groupLabels{groupIdx});
+        if proposedGroup(groupIdx)
+            lineColor = colors(groupIdx, :);
+            lineWidth = proposedLineWidth;
+            lineStyle = '-';
+        else
+            baselineStyleIdx = baselineStyleIdx + 1;
+            lineColor = colors(groupIdx, :);
+            lineWidth = baselineLineWidth;
+            lineStyle = baselineLineStyles{baselineStyleIdx};
+        end
+        plot(plotPhase, candidateY(:, stateIdx), 'LineWidth', lineWidth, ...
+            'Color', lineColor, ...
+            'LineStyle', lineStyle, ...
+            'DisplayName', groupLabels{groupIdx});
     end
 
-    ylabel(sprintf('State %d', stateIdx))
+    scatter(targetScatterPhase, targetScatterY(:, stateIdx), 5, 'k', 'x', ...
+        'LineWidth', 0.6, 'DisplayName', 'target','MarkerEdgeColor','r');
+
+    ylabel(sprintf('V_{%d}', stateIdx))
     if stateIdx == 1
-        title('Best parameter time series comparison')
-        legend('Location', 'bestoutside')
+        ylim([0 2])
+    end
+    if stateIdx == 0
+        lgd = legend(gca, 'Location', 'northeast', ...
+            'NumColumns', 3, 'Box', 'off');
+        set(lgd, 'FontName', 'Arial', 'FontSize', 6, ...
+            'ItemTokenSize', [8, 4]);
     end
     if stateIdx == stateCount
         xlabel('Normalized phase')
     end
+    set(gca, 'FontName', 'Arial', 'FontSize', fontSize)
+end
+
+%% Figure 5: Best parameter residual time series comparison
+figure
+for stateIdx = 1:stateCount
+    subplot(stateCount, 1, stateIdx)
+    hold on
+    grid on
+    box on
+    yline(0, '-', 'Color', [0.55 0.55 0.55], 'LineWidth', 0.5, ...
+        'HandleVisibility', 'off');
+
+    baselineStyleIdx = 0;
+    for groupIdx = 1:numel(groupKeys)
+        record = representatives(groupIdx);
+
+        candidateY = resample_orbit_y(record.bestOrbit, plotPhase);
+        candidateY = align_candidate_phase(candidateY, targetY);
+        residualY = candidateY - targetY;
+        if proposedGroup(groupIdx)
+            lineColor = colors(groupIdx, :);
+            lineWidth = proposedLineWidth;
+            lineStyle = '-';
+        else
+            baselineStyleIdx = baselineStyleIdx + 1;
+            lineColor = colors(groupIdx, :);
+            lineWidth = baselineLineWidth;
+            lineStyle = baselineLineStyles{baselineStyleIdx};
+        end
+        plot(plotPhase, residualY(:, stateIdx), 'LineWidth', lineWidth, ...
+            'Color', lineColor, ...
+            'LineStyle', lineStyle, ...
+            'DisplayName', groupLabels{groupIdx});
+    end
+
+    ylabel(sprintf('\\Delta V_{%d}', stateIdx))
+    if stateIdx == 1
+        lgd = legend(gca, 'Location', 'northeast', ...
+            'NumColumns', 3, 'Box', 'off');
+        set(lgd, 'FontName', 'Arial', 'FontSize', 6, ...
+            'ItemTokenSize', [8, 4]);
+    end
+    if stateIdx == stateCount
+        xlabel('Normalized phase')
+    end
+    set(gca, 'FontName', 'Arial', 'FontSize', fontSize)
 end
 
 %% Local functions
@@ -349,36 +452,207 @@ else
 end
 end
 
-function draw_distribution_box(x, values, color)
+function proposedGroup = is_proposed_group(groupKeys, groupLabels)
+proposedGroup = false(size(groupKeys));
+for groupIdx = 1:numel(groupKeys)
+    proposedGroup(groupIdx) = strcmp(groupLabels{groupIdx}, 'proposed method') || ...
+        startsWith(groupKeys{groupIdx}, 'proposed_method|');
+end
+end
+
+function valuesByGroup = group_record_values(records, groupIndex, numGroups, fieldName)
+valuesByGroup = cell(numGroups, 1);
+for groupIdx = 1:numGroups
+    groupRecords = records(groupIndex == groupIdx);
+    valuesByGroup{groupIdx} = reshape([groupRecords.(fieldName)], [], 1);
+end
+end
+
+function proposedData = load_proposed_sensitivity_runtime_loss( ...
+    parameterInferenceDir, config, scale)
+sensitivityDir = fullfile(parameterInferenceDir, 'sensitivity_to_init_data');
+scaleDir = fullfile(sensitivityDir, 'results', scale_dir_name(scale));
+statsFile = fullfile(scaleDir, 'successful_params_stats.mat');
+summaryFile = fullfile(scaleDir, 'params_inf_sensitivity_summary.mat');
+
+statsData = load(statsFile);
+summaryData = load(summaryFile);
+
+numSuccess = numel(statsData.successFinalOrbit);
+successLoss = NaN(numSuccess, 1);
+for sampleIdx = 1:numSuccess
+    if statsData.orbitSuccess(sampleIdx)
+        candidateOrbit = statsData.successFinalOrbit{sampleIdx};
+        candidateFeatures = evaluate_orbit_features(candidateOrbit, [], [], struct());
+        successLoss(sampleIdx) = loss_function(candidateOrbit, ...
+            config.targetOrbit, config.lossOptions, ...
+            candidateFeatures, config.targetFeatures);
+    end
+end
+
+successRuntime = statsData.successRuntimeFMAM(:);
+successMask = isfinite(successRuntime) & successRuntime > 0 & ...
+    isfinite(successLoss) & successLoss > 0;
+
+runResults = summaryData.runResults;
+failedMask = ~[runResults.success];
+failedRuntime = [runResults.runtimeFMAM].';
+proposedData = struct();
+proposedData.successRuntime = successRuntime(successMask);
+proposedData.successLoss = successLoss(successMask);
+proposedData.failedRuntime = failedRuntime(failedMask(:) & isfinite(failedRuntime) & failedRuntime > 0);
+end
+
+function dirName = scale_dir_name(scale)
+token = strrep(sprintf('%.12g', scale), '.', 'p');
+dirName = ['scale_' token];
+end
+
+function [mainAx, failureAx] = create_runtime_axes(fig)
+failureAx = axes(fig, 'Position', [0.12, 0.15, 0.82, 0.08]);
+hold(failureAx, 'on')
+grid(failureAx, 'on')
+box(failureAx, 'on')
+
+mainAx = axes(fig, 'Position', [0.12, 0.25, 0.82, 0.68]);
+hold(mainAx, 'on')
+grid(mainAx, 'on')
+box(mainAx, 'on')
+end
+
+function format_runtime_axes(mainAx, failureAx, xValues, yValues, axisPadding, fontSize, ...
+    xLabelText, yLabelText)
+xLimits = padded_log_limits(xValues, axisPadding);
+set(mainAx, ...
+    'FontName', 'Arial', ...
+    'FontSize', fontSize, ...
+    'XScale', 'log', ...
+    'YScale', 'log', ...
+    'XTickLabel', [])
+set(failureAx, ...
+    'FontName', 'Arial', ...
+    'FontSize', fontSize, ...
+    'XScale', 'log', ...
+    'YTick', 0.5, ...
+    'YTickLabel', {'failed'})
+xlim(mainAx, xLimits)
+xlim(failureAx, xLimits)
+ylim(mainAx, padded_limits(yValues, axisPadding, true))
+ylim(failureAx, [0 1])
+ylabel(mainAx, yLabelText, 'FontName', 'Arial')
+xlabel(failureAx, xLabelText, 'FontName', 'Arial')
+end
+
+function limits = plotted_y_limits(ax, padding, useLogScale)
+children = findobj(ax, '-property', 'YData');
+values = [];
+for childIdx = 1:numel(children)
+    yData = get(children(childIdx), 'YData');
+    values = [values; yData(:)]; %#ok<AGROW>
+end
+
+values = values(isfinite(values));
+if useLogScale
+    values = values(values > 0);
+end
+limits = padded_limits(values, padding, useLogScale);
+end
+
+function limits = padded_limits(values, padding, useLogScale)
+values = values(:);
+if useLogScale
+    logValues = log10(values(values > 0));
+    logMin = min(logValues);
+    logMax = max(logValues);
+    logSpan = max(logMax - logMin, 0.05);
+    limits = 10 .^ [logMin - padding * logSpan, logMax + padding * logSpan];
+else
+    valueMin = min(values);
+    valueMax = max(values);
+    valueSpan = max(valueMax - valueMin, eps);
+    limits = [valueMin - padding * valueSpan, valueMax + padding * valueSpan];
+end
+end
+
+function limits = padded_log_limits(values, padding)
+values = values(:);
+values = values(isfinite(values) & values > 0);
+logValues = log10(values);
+logMin = min(logValues);
+logMax = max(logValues);
+logSpan = max(logMax - logMin, 0.05);
+limits = 10 .^ [logMin - padding * logSpan, logMax + padding * logSpan];
+end
+
+function draw_distribution_violin(ax, x, values, color)
+values = values(:);
 values = values(isfinite(values));
 if isempty(values)
     return
 end
 
+draw_distribution_scatter(ax, x, values, color);
+if numel(unique(values)) >= 2
+    draw_half_violin(ax, x + 0.04, values, color);
+    draw_box_summary(ax, x + 0.03, values, color);
+end
+end
+
+function draw_distribution_scatter(ax, xCenter, values, color)
+scatterWidth = 0.16;
+if isscalar(values)
+    scatterX = xCenter;
+else
+    scatterX = xCenter - 0.26 + scatterWidth * (rand(size(values)) - 0.5);
+end
+scatter(ax, scatterX, values, 5, color, 'filled', ...
+     'MarkerEdgeColor', 'w', ...
+    'MarkerFaceAlpha', 0.65, ...
+    'MarkerEdgeAlpha', 0.75, ...
+    'LineWidth', 0.4);
+end
+
+function draw_half_violin(ax, xBase, values, color)
+[density, logSupport] = ksdensity(log10(values(values > 0)), 'NumPoints', 150);
+support = 10 .^ logSupport;
+violinWidth = 0.28 * density / max(density);
+xPatch = [xBase + violinWidth, repmat(xBase, 1, numel(support))];
+yPatch = [support, fliplr(support)];
+patch(ax, xPatch, yPatch, color, ...
+    'FaceAlpha', 0.22, ...
+    'EdgeColor', lighten_color(color, 0.45), ...
+    'EdgeAlpha', 0.45, ...
+    'LineWidth', 0.8);
+end
+
+function draw_box_summary(ax, xCenter, values, color)
 q1 = percentile_value(values, 25);
 q2 = percentile_value(values, 50);
 q3 = percentile_value(values, 75);
 vMin = min(values);
 vMax = max(values);
-boxWidth = 0.28;
+boxWidth = 0.18;
+boxLeft = xCenter - boxWidth / 2;
+boxRight = xCenter + boxWidth / 2;
 
-patch(x + boxWidth * [-1 1 1 -1], [q1 q1 q3 q3], color, ...
-    'FaceAlpha', 0.18, 'EdgeColor', color, 'LineWidth', 1.0);
-plot([x - boxWidth, x + boxWidth], [q2 q2], '-', 'Color', color, ...
-    'LineWidth', 1.5);
-plot([x x], [vMin q1], '-', 'Color', color, 'LineWidth', 0.8);
-plot([x x], [q3 vMax], '-', 'Color', color, 'LineWidth', 0.8);
-plot([x - boxWidth / 2, x + boxWidth / 2], [vMin vMin], '-', ...
-    'Color', color, 'LineWidth', 0.8);
-plot([x - boxWidth / 2, x + boxWidth / 2], [vMax vMax], '-', ...
-    'Color', color, 'LineWidth', 0.8);
-
-jitter = linspace(-0.08, 0.08, numel(values)).';
-if isscalar(values)
-    jitter = 0;
+plot(ax, [xCenter, xCenter], [vMin q1], '-', ...
+    'Color', lighten_color(color, 0.2), 'LineWidth', 0.5);
+plot(ax, [xCenter, xCenter], [q3 vMax], '-', ...
+    'Color', lighten_color(color, 0.2), 'LineWidth', 0.5);
+plot(ax, [boxLeft, boxRight], [vMin vMin], '-', ...
+    'Color', lighten_color(color, 0.2), 'LineWidth', 0.5);
+plot(ax, [boxLeft, boxRight], [vMax vMax], '-', ...
+    'Color', lighten_color(color, 0.2), 'LineWidth', 0.5);
+rectangle(ax, ...
+    'Position', [boxLeft, q1, boxWidth, max(q3 - q1, eps)], ...
+    'FaceColor', [color, 0.58], ...
+    'EdgeColor', 'none');
+plot(ax, [boxLeft, boxRight], [q2 q2], 'k-', 'LineWidth', 0.8);
 end
-scatter(x + jitter, values, 24, color, 'filled', ...
-    'MarkerFaceAlpha', 0.75, 'MarkerEdgeColor', 'none');
+
+function lighterColor = lighten_color(color, amount)
+lighterColor = color + amount * (1 - color);
+lighterColor = min(max(lighterColor, 0), 1);
 end
 
 function representatives = select_group_representatives(records, groupIndex, numGroups)

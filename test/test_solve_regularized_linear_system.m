@@ -15,7 +15,7 @@ function testBestEffortUsesDirectOnWellConditionedSystem(testCase)
     verifyEqual(testCase, result.lambda, 0, 'AbsTol', 0);
     verifyEqual(testCase, A * result.solution, b, 'AbsTol', 1e-12);
     verifyGreaterThan(testCase, result.conditionEstimate, 1e-10);
-    verifyEqual(testCase, result.linearSystemScaling, 'row');
+    verifyEqual(testCase, result.linearSystemScaling, 'none');
 end
 
 function testBestEffortFallsBackToLMOnIllConditionedSystem(testCase)
@@ -38,13 +38,16 @@ function testRowScalingCanMakeDirectSolveViable(testCase)
     A = [1e-12, 0; 0, 1];
     b = [1e-12; 2];
 
-    result = solve_regularized_linear_system(A, b, default_options(), 'best_effort');
+    opts = default_options();
+    opts.linearSystemScaling = 'row';
+
+    result = solve_regularized_linear_system(A, b, opts, 'best_effort');
 
     verifyTrue(testCase, result.success);
     verifyEqual(testCase, result.solver, 'direct');
     verifyEqual(testCase, result.linearSystemScaling, 'row');
     verifyGreaterThan(testCase, result.directConditionEstimate, ...
-        default_options().directConditionThreshold);
+        opts.directConditionThreshold);
     verifyEqual(testCase, A * result.solution, b, 'AbsTol', 1e-12);
 end
 
@@ -113,5 +116,5 @@ function opts = default_options()
         'lambdaGrow', 10, ...
         'directConditionThreshold', 1e-10, ...
         'lmConditionThreshold', 1e-12, ...
-        'linearSystemScaling', 'row');
+        'linearSystemScaling', 'none');
 end

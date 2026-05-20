@@ -18,15 +18,19 @@ representativeOptions = loaded.representativeOptions;
 
 %% Plot settings
 disp('%% Plot settings');
-nColor = 256;
-tColor = linspace(0, 1, nColor).';
-coolColormap = (1 - tColor) .* [0.05, 0.25, 0.60] + tColor .* [0.92, 0.95, 0.98];
+plotTimeLimits = [0, 100];
+plotYLimits = [0.05, 0.25];
+periodColormap = [
+    0.02, 0.07, 0.45
+    0.06, 0.25, 0.62
+    0.31, 0.58, 0.78
+];
 periodValues = [representative.targetPeriod];
 periodLimits = [min(periodValues), max(periodValues)];
 
 %% Draw figure
 disp('%% Draw figure');
-fig = figure('Color', 'w', 'Position', [100, 100, 680, 420]);
+fig = figure();
 ax = axes(fig);
 hold(ax, 'on');
 
@@ -34,17 +38,22 @@ for i = 1:numel(representative)
     fprintf('Draw representative trace %d/%d: T = %.1f\n', ...
         i, numel(representative), representative(i).targetPeriod);
     Ptot = representative(i).X(:, 2) + representative(i).X(:, 3);
-    lineColor = value_to_color(representative(i).targetPeriod, periodLimits, coolColormap);
-    plot(ax, representative(i).t, Ptot, 'LineWidth', 2.2, ...
+    timeMask = representative(i).t >= plotTimeLimits(1) & representative(i).t <= plotTimeLimits(2);
+    lineColor = value_to_color(representative(i).targetPeriod, periodLimits, periodColormap);
+    plot(ax, representative(i).t(timeMask), Ptot(timeMask), 'LineWidth', 2.2, ...
         'Color', lineColor, ...
         'DisplayName', sprintf('T = %.1f', representative(i).targetPeriod));
 end
 
-grid(ax, 'on');
+grid on
+box on
+xlim(ax, plotTimeLimits);
+ylim(ax, plotYLimits);
+xticks(ax, [0, 50, 100]);
+yticks(ax, [0.05, 0.15, 0.25]);
 xlabel(ax, 'Time (hour)');
-ylabel(ax, 'P_{tot} (a.u.)');
-title(ax, 'Fig. 5d2: Representative noisy time series');
-legend(ax, 'Location', 'best');
+ylabel(ax, 'Concentration (a.u.)');
+legend(ax, 'Location', 'north', 'Box', 'on');
 
 exportgraphics(fig, figureFile, 'Resolution', 300);
 fprintf('Saved figure: %s\n', figureFile);

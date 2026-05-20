@@ -19,7 +19,7 @@ couplingType = 'synapse';
 
 G_scale = 1;
 if N > 1
-    G = G_scale * [0 1;1 0];
+    G = G_scale * [0 1;10 0];
 end
 
 % Fixed HH parameters.
@@ -36,7 +36,7 @@ Esyn0 = 0.0 * ones(N, 1);
 I0_vector = 120 * ones(N, 1);
 
 % Active parameters selected by name.
-active_param_names = {'G_1_2','G_2_1'};
+active_param_names = {'C_1','C_2'};
 
 % Shared initial state.
 V0 = 0.2;
@@ -45,8 +45,8 @@ h0 = 0.2;
 n0 = 0.5;
 
 % Target amplitudes relative to the initial periodic orbit.
-targetScale1 = 1;
-targetScale2 = 1;
+targetScale1 = 4;
+targetScale2 = 4;
 
 % Orbit extraction settings.
 orbitOptions = struct();
@@ -131,9 +131,9 @@ obs = [];
 sys = build_hh_system(defaultParams, active_specs, N);
 derivatives = build_symbolic_derivatives(sys, obs, numel(params));
 
-PV = struct('name', 'var', 'idx', 1);
+PV = struct('name', 'var', 'idx', 2);
 discretization = fmam_state_defaults.defaultDiscretization();
-discretization.reconstruction.phaseMode = 'linearTime'; % primaryCosine, linearTime
+discretization.reconstruction.phaseMode = 'primaryCosine'; % primaryCosine, linearTime
 State = state(obs, params, t, TS_var, M, PV, 'discretization', discretization);
 StateView = fmam_state_ops.solverViewFromState(State);
 
@@ -149,19 +149,20 @@ items_per(1).prop = 'varAmp';
 items_per(1).idx = 1;
 items_per(1).target = targetfeat(1);
 
-items_per(2).prop = 'varAmp';
-items_per(2).idx = 2;
-items_per(2).target = targetfeat(2);
+% items_per(2).prop = 'varAmp';
+% items_per(2).idx = 2;
+% items_per(2).target = targetfeat(2);
 
 % items_per(3).prop = 'varAmp';
 % items_per(3).idx = 3;
 % items_per(3).target = targetfeat(3);
 
-items_controlled = 1:numel(params);
-% items_controlled = 1:1;
+% items_controlled = 1:numel(params);
+items_controlled = 1:1;
 task = FMAM_ODE(sys, obs, StateView, items_per, items_controlled, [], errBound, ...
     'derivatives', derivatives, 'continuationOptions', continuationOptions,'newtonOptions',newtonOptions);
-task.psiUpdateMode = false;
+task.errBound = 1e-3;
+task.psiUpdateMode = true;
 task.refreshPsiModeReferences();
 task.needLog = need_path;
 

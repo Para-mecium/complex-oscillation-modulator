@@ -7,27 +7,6 @@ scriptDir = fileparts(mfilename('fullpath'));
 % load data
 load("initData_circuit.mat")
 
-% Initialization
-load("initData_ODE.mat")
-cd ../
-System 
-obs = [];
-
-params = Parameters;
-
-t = TS{1};
-TS_var = TS{2};
-TS_obs = [];
-M = 50; % truncation order
-cd ../
-derivatives = build_symbolic_derivatives(sys, obs, numel(params));
-
-% Set Primary variable
-PV.name = 'var';
-PV.idx = 1;
-State = state(obs,params,t,TS_var,M,PV);
-StateView = fmam_state_ops.solverViewFromState(State);
-
 % Set modualtion target
 items_per = struct;
 
@@ -46,6 +25,28 @@ items_per(3).target = varAmp(2);
 items_per(4).prop = 'varAmp';
 items_per(4).idx = 3;
 items_per(4).target = varAmp(3);
+
+% Initialization
+load("initData_ODE.mat")
+
+cd ../
+System 
+obs = [];
+
+params = Parameters;
+
+t = TS{1};
+TS_var = TS{2};
+TS_obs = [];
+M = 75; % truncation order
+cd ../
+derivatives = build_symbolic_derivatives(sys, obs, numel(params));
+
+% Set Primary variable
+PV.name = 'var';
+PV.idx = 1;
+State = state(obs,params,t,TS_var,M,PV);
+StateView = fmam_state_ops.solverViewFromState(State);
 
 items_controlled = [1 4 5 6];
 errBound = 1e-6;
@@ -145,3 +146,6 @@ box on
 plot(poResult.orbit_t, poResult.orbit_y(:, 1))
 plot(poResult.orbit_t, poResult.orbit_y(:, 2))
 plot(poResult.orbit_t, poResult.orbit_y(:, 3))
+% plot(StateDerived.t, StateDerived.TS_var(:,1))
+% plot(StateDerived.t, StateDerived.TS_var(:,2))
+% plot(StateDerived.t, StateDerived.TS_var(:,3))

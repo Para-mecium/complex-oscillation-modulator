@@ -22,7 +22,7 @@ Options.seed = seed;
 Options.warmupT = warmupT;
 Options.measureT = measureT;
 Options.T = warmupT + measureT;
-Options.dt = 0.01;
+Options.dt = 0.001;
 Options.sigma = 0.1;
 Options.noiseClass = repmat({'o'}, 1, 8);
 

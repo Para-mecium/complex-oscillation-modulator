@@ -7,9 +7,16 @@ slprj/
 *.log
 *.mat
 *.pdf
+*.eps
+*.gif
 *.png
+*.svg
+*.tif
+*.tiff
+*.webp
 *.jpg
 *.jpeg
+*.bmp
 *.fig
 *.mexmaca64
 *.mexw64

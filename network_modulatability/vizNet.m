@@ -1,3 +1,6 @@
+clear
+clc
+%%
 dynamicName = 'FHN';
 netName = 'ER';
 N = 100;
@@ -5,6 +8,7 @@ n_per = 50;
 mksize = 0.5;
 arsize = 2;
 lnwidth = 0.2;
+modulatedEdgeAlpha = 0.5;
 
 scriptDir = fileparts(mfilename('fullpath'));
 folderName = fullfile(scriptDir, [dynamicName '_' netName]);
@@ -18,26 +22,63 @@ perturbed = networkexp.load_single_result( ...
     fullfile(folderName, sprintf('TS_per_%d_%s (%s, N = %d).mat', ...
     n_per, dynamicName, netName, N)));
 
-G = digraph(baseline.weightMatrix);
+G = build_plot_graph(baseline.weightMatrix);
 figure
 net = plot(G, "Layout", "force", NodeLabel={}, MarkerSize=mksize, ArrowSize=arsize, LineWidth=lnwidth);
 net.XData = net.XData * 2;
 net.YData = net.YData * 2;
+axis off
+box off
 nodePositions = [net.XData', net.YData'];
 
 format_figure(gcf)
-print(gcf, fullfile(figDir, [netName '_origin.pdf']), '-dpdf');
+save_network_figure(gcf, fullfile(figDir, [netName '_origin.pdf']));
 
-G = digraph(perturbed.weightMatrix);
+G = build_plot_graph(baseline.weightMatrix);
 figure
 net_per = plot(G, 'XData', nodePositions(:, 1), 'YData', nodePositions(:, 2), ...
     NodeLabel={}, MarkerSize=mksize, ArrowSize=arsize, LineWidth=lnwidth);
-if ~isempty(perturbed.edgeIndices)
-    highlight(net_per, 'Edges', perturbed.edgeIndices, 'EdgeColor', 'r', 'LineWidth', lnwidth * 3)
-end
+hold on
+plot_perturbed_edges(perturbed, N, nodePositions, arsize, lnwidth * 3, modulatedEdgeAlpha);
+hold off
+axis off
+box off
 
 format_figure(gcf)
-print(gcf, fullfile(figDir, [netName '_n_per = ' num2str(n_per) '.pdf']), '-dpdf');
+save_network_figure(gcf, fullfile(figDir, [netName '_n_per = ' num2str(n_per) '.pdf']));
+
+function G = build_plot_graph(weightMatrix)
+adjacency = spones(sparse(weightMatrix));
+G = digraph(adjacency);
+end
+
+function save_network_figure(fig, filePath)
+print(fig, filePath, '-dpdf', '-painters');
+end
+
+function plot_perturbed_edges(perturbed, nodeCount, nodePositions, arrowSize, lineWidth, edgeAlpha)
+edgeList = perturbed.perturbationEdges;
+if isempty(edgeList)
+    return
+end
+
+edgeList = edgeList(all(edgeList >= 1 & edgeList <= nodeCount, 2), :);
+if isempty(edgeList)
+    return
+end
+
+edgeGraph = digraph(edgeList(:, 1), edgeList(:, 2), [], nodeCount);
+edgePlot = plot(edgeGraph, ...
+    'XData', nodePositions(:, 1), ...
+    'YData', nodePositions(:, 2), ...
+    'NodeLabel', {}, ...
+    'Marker', 'none', ...
+    'EdgeColor', 'r', ...
+    'EdgeAlpha', edgeAlpha, ...
+    'ArrowSize', arrowSize, ...
+    'LineWidth', lineWidth);
+uistack(edgePlot, 'top');
+end
 
 function ensure_directory(folderPath)
 if exist(folderPath, 'dir') ~= 7

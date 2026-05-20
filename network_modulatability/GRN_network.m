@@ -6,7 +6,7 @@ settings = struct();
 settings.randomSeed = 1;
 
 % netName options: 'ER', 'BA', 'SW'
-settings.netName = 'ER'; 
+settings.netName = 'SW'; 
 
 settings.weightPer = 0.03;
 settings.nPerturbedEdges = 50;
@@ -18,7 +18,7 @@ settings.perturbedNodeSelectionMode = 'prefix';
 settings.inputNodeSelectionMode = 'uniformRandomWithoutReplacement';
 
 settings.solverName = 'ode15s';
-settings.searchWindow = 3000;
+settings.searchWindow = 5000;
 settings.network = struct( ...
     'N', 100, ...
     'degAvg', 5, ...

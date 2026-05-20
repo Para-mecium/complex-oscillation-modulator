@@ -238,7 +238,7 @@ function opts = default_options()
     opts.lambdaGrow = 10;
     opts.directConditionThreshold = 1e-10;
     opts.lmConditionThreshold = 1e-12;
-    opts.linearSystemScaling = 'row';
+    opts.linearSystemScaling = 'none';
 end
 
 function result = empty_result(A)

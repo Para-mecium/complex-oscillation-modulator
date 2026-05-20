@@ -1,45 +1,43 @@
 clear
 clc
-
+%%
 % 'parameter' or 'orbit_l2'
 errorMetric = 'orbit_l2';
-foldYAxis = use_folded_y_axis(false);
+foldYAxis = should_fold_y_axis(errorMetric);
 foldAxisPadding = 0.18;
-axisPadding = 0.08;
-yLimits = [1e-2, 7e-1];
 
 scriptDir = fileparts(mfilename('fullpath'));
 parameterInferenceDir = fileparts(scriptDir);
 circuitDir = fileparts(parameterInferenceDir);
-resultsDir = fullfile(scriptDir, 'modulation_results');
+resultsRootDir = fullfile(scriptDir, 'results');
+scaleLevels = [0.5 0.75 1 1.25 1.5];
 
-addpath(parameterInferenceDir, '-begin');
+metricSpec = build_metric_spec(errorMetric, circuitDir);
 
-metricSpec = build_metric_spec(errorMetric, circuitDir, parameterInferenceDir);
+scaleValues = zeros(0, 1);
+distancesByScale = {};
+statsByScale = struct('numTotal', {}, 'numSuccess', {}, ...
+    'successRate', {}, 'numMetricValues', {});
 
-summaryFiles = dir(fullfile(resultsDir, 'noise_level_*', 'modulation_summary.mat'));
-noiseLevels = zeros(numel(summaryFiles), 1);
-distancesByLevel = cell(numel(summaryFiles), 1);
-successRates = zeros(numel(summaryFiles), 1);
+for scaleIdx = 1:numel(scaleLevels)
+    scale = scaleLevels(scaleIdx);
+    resultScaleDir = fullfile(resultsRootDir, scale_dir_name(scale));
+    statsData = load(fullfile(resultScaleDir, metricSpec.statsFileName));
+    values = collect_metric_values(statsData, metricSpec);
 
-for fileIdx = 1:numel(summaryFiles)
-    summaryFile = fullfile(summaryFiles(fileIdx).folder, summaryFiles(fileIdx).name);
-    summaryData = load(summaryFile);
-
-    noiseLevels(fileIdx) = summaryData.noiseLevel;
-    successRates(fileIdx) = summaryData.successRate;
-    distancesByLevel{fileIdx} = collect_metric_values(summaryData, ...
-        summaryFiles(fileIdx).folder, metricSpec);
+    scaleValues(end + 1, 1) = statsData.scale; %#ok<SAGROW>
+    distancesByScale{end + 1, 1} = values; %#ok<SAGROW>
+    statsByScale(end + 1).numTotal = statsData.numTotal; %#ok<SAGROW>
+    statsByScale(end).numSuccess = statsData.numSuccess;
+    statsByScale(end).successRate = statsData.successRate;
+    statsByScale(end).numMetricValues = numel(values);
 end
 
-[noiseLevels, sortIdx] = sort(noiseLevels);
-distancesByLevel = distancesByLevel(sortIdx);
-successRates = successRates(sortIdx);
-
-allDistances = vertcat(distancesByLevel{:});
+allDistances = vertcat(distancesByScale{:});
 displayFloor = choose_display_floor(allDistances, metricSpec.useLogScale);
 
-fig = figure('Color', 'w', 'Position', [100, 100, 640, 520]);
+figWidth = max(640, 150 * numel(distancesByScale));
+fig = figure('Color', 'w', 'Position', [100, 100, figWidth, 520]);
 if foldYAxis
     [topAx, bottomAx] = create_folded_axes(fig);
     [lowerYLim, upperYLim, lowerCut, upperCut] = folded_y_limits( ...
@@ -51,52 +49,58 @@ else
     box(ax, 'on')
 end
 
-colors = lines(numel(noiseLevels));
+colors = lines(numel(distancesByScale));
 rng(1, 'twister');
 
-for levelIdx = 1:numel(noiseLevels)
-    values = distancesByLevel{levelIdx};
+for scaleIdx = 1:numel(distancesByScale)
+    values = distancesByScale{scaleIdx};
     plotValues = max(values, displayFloor);
     numFloorClipped = nnz(values < displayFloor);
     if foldYAxis
-        draw_raincloud_group(bottomAx, levelIdx, plotValues(plotValues <= lowerCut), ...
-            colors(levelIdx, :), metricSpec.useLogDensity);
-        draw_scatter_group(topAx, levelIdx, plotValues(plotValues >= upperCut), colors(levelIdx, :));
+        draw_raincloud_group(bottomAx, scaleIdx, plotValues(plotValues <= lowerCut), ...
+            colors(scaleIdx, :), metricSpec.useLogDensity);
+        draw_scatter_group(topAx, scaleIdx, plotValues(plotValues >= upperCut), colors(scaleIdx, :));
     else
-        draw_raincloud_group(ax, levelIdx, plotValues, colors(levelIdx, :), metricSpec.useLogDensity);
+        draw_raincloud_group(ax, scaleIdx, plotValues, colors(scaleIdx, :), metricSpec.useLogDensity);
     end
 
-    fprintf(['noiseLevel=%.6g, successRate=%.3f, n=%d, ' ...
+    fprintf(['scale=%.6g: success=%d/%d (%.3f), n=%d, ' ...
         'median%s=%.6g, floorClipped=%d\n'], ...
-        noiseLevels(levelIdx), successRates(levelIdx), numel(values), ...
+        scaleValues(scaleIdx), ...
+        statsByScale(scaleIdx).numSuccess, ...
+        statsByScale(scaleIdx).numTotal, ...
+        statsByScale(scaleIdx).successRate, ...
+        statsByScale(scaleIdx).numMetricValues, ...
         metricSpec.logName, median(values), numFloorClipped);
 end
 
 if foldYAxis
-    format_folded_axes(topAx, bottomAx, noiseLevels, lowerYLim, upperYLim, ...
-        metricSpec.useLogScale, metricSpec.yLabel, 'Noise intensity', ...
-        'Sensitivity to measurement noise');
+    format_folded_axes(topAx, bottomAx, scaleValues, lowerYLim, upperYLim, ...
+        metricSpec.useLogScale, metricSpec.yLabel, 'Sampling region scale', ...
+        'Sensitivity to initial data');
 else
     set(ax, ...
-        'XTick', 1:numel(noiseLevels), ...
-        'XTickLabel', compose('%.3g', noiseLevels), ...
+        'XTick', 1:numel(scaleValues), ...
+        'XTickLabel', compose('%.3g', scaleValues), ...
         'FontName', 'Arial', ...
         'FontSize', 11);
     if metricSpec.useLogScale
         set(ax, 'YScale', 'log');
     end
-    ylim(ax, yLimits);
-    xlim(ax, [0.5, numel(noiseLevels) + 0.7]);
-    xlabel(ax, 'Noise intensity', 'FontName', 'Arial');
+    xlim(ax, [0.5, numel(scaleValues) + 0.7]);
+    ylim(ax, [displayFloor, 1.25 * max(max(allDistances), displayFloor)]);
+    xlabel(ax, 'Sampling region scale', 'FontName', 'Arial');
     ylabel(ax, metricSpec.yLabel, 'FontName', 'Arial');
-    title(ax, 'Sensitivity to measurement noise', ...
+    title(ax, 'Sensitivity to initial data', ...
         'FontName', 'Arial', 'FontWeight', 'normal');
 end
 
-exportgraphics(fig, fullfile(scriptDir, metricSpec.outputFileName), ...
+fprintf('Display floor=%.6g\n', displayFloor);
+
+exportgraphics(fig, fullfile(resultsRootDir, metricSpec.outputFileName), ...
     'Resolution', 300);
 
-function metricSpec = build_metric_spec(errorMetric, circuitDir, parameterInferenceDir)
+function metricSpec = build_metric_spec(errorMetric, circuitDir)
 switch lower(errorMetric)
     case 'parameter'
         baseData = load(fullfile(circuitDir, 'learnedData_ODE.mat'), 'Parameters');
@@ -106,78 +110,41 @@ switch lower(errorMetric)
 
         metricSpec = struct( ...
             'name', 'parameter', ...
-            'outputFileName', 'Sensitivity_to_measurement_noise.png', ...
-            'yLabel', 'Relative Euclidean distance from noiseless inferred physical parameters', ...
+            'statsFileName', 'successful_params_stats.mat', ...
+            'outputFileName', 'Sensitivity_to_initial_data_violin.png', ...
+            'yLabel', 'Relative parameter diff', ...
             'logName', 'RelativeDistance', ...
-            'useLogScale', false, ...
-            'useLogDensity', false, ...
+            'useLogScale', true, ...
+            'useLogDensity', true, ...
             'basePhysicalParams', basePhysicalParams, ...
-            'distanceScale', distanceScale, ...
-            'targetOrbit', [], ...
-            'lossOptions', []);
+            'distanceScale', distanceScale);
 
     case 'orbit_l2'
-        targetData = load(fullfile(parameterInferenceDir, 'initData_circuit.mat'));
-        targetOrbit = struct( ...
-            't', targetData.t(:), ...
-            'y', targetData.y, ...
-            'period', targetData.period);
-        lossOptions = struct( ...
-            'name', 'relative_l2_orbit', ...
-            'compareNumPoints', size(targetData.y, 1), ...
-            'phaseAlignment', true, ...
-            'periodWeight', 0);
-
         metricSpec = struct( ...
             'name', 'orbit_l2', ...
-            'outputFileName', 'Sensitivity_to_measurement_noise_orbit_l2.png', ...
-            'yLabel', 'Relative L2 error to initial circuit data', ...
+            'statsFileName', 'successful_params_stats.mat', ...
+            'outputFileName', 'Sensitivity_to_initial_data_orbit_l2_violin.png', ...
+            'yLabel', 'Relative L2 error', ...
             'logName', 'OrbitRelativeL2', ...
             'useLogScale', true, ...
             'useLogDensity', true, ...
             'basePhysicalParams', [], ...
-            'distanceScale', [], ...
-            'targetOrbit', targetOrbit, ...
-            'lossOptions', lossOptions);
+            'distanceScale', []);
 end
 end
 
-function foldYAxis = use_folded_y_axis(flag)
-foldYAxis = flag;
-end
-
-function values = collect_metric_values(summaryData, resultDir, metricSpec)
-sampleSuccess = reshape(summaryData.sampleSuccess, 1, []);
-values = [];
-
+function values = collect_metric_values(statsData, metricSpec)
 switch metricSpec.name
     case 'parameter'
-        identifiedParameters = reshape(summaryData.identifiedParameters, 1, []);
-        for sampleIdx = 1:numel(identifiedParameters)
-            if sampleSuccess(sampleIdx)
-                physicalParams = to_physical_params(identifiedParameters{sampleIdx});
-                relativeDifference = (physicalParams - metricSpec.basePhysicalParams) ./ ...
-                    metricSpec.distanceScale;
-                values(end + 1, 1) = norm(relativeDifference, 2); %#ok<AGROW>
-            end
-        end
+        relativeDifferences = (statsData.successPhysicalParams - metricSpec.basePhysicalParams) ./ ...
+            metricSpec.distanceScale;
+        values = vecnorm(relativeDifferences, 2, 2);
 
     case 'orbit_l2'
-        selectedFiles = reshape(summaryData.selectedFiles, 1, []);
-        for sampleIdx = 1:numel(selectedFiles)
-            if sampleSuccess(sampleIdx)
-                resultFile = fullfile(resultDir, ...
-                    sprintf('modulated_to_initData_%03d.mat', selectedFiles(sampleIdx)));
-                resultData = load(resultFile, 'TS');
-                candidateOrbit = struct( ...
-                    't', resultData.TS{1}(:), ...
-                    'y', resultData.TS{2});
-                values(end + 1, 1) = loss_function( ...
-                    candidateOrbit, metricSpec.targetOrbit, metricSpec.lossOptions); %#ok<AGROW>
-            end
-        end
+        values = statsData.orbitRelativeL2(statsData.orbitSuccess);
 end
 
+values = values(:);
 values = values(isfinite(values));
 end
 
@@ -214,21 +181,6 @@ else
 end
 end
 
-function limits = plotted_y_limits(ax, padding, useLogScale)
-children = findobj(ax, '-property', 'YData');
-values = [];
-for childIdx = 1:numel(children)
-    yData = get(children(childIdx), 'YData');
-    values = [values; yData(:)]; %#ok<AGROW>
-end
-
-values = values(isfinite(values));
-if useLogScale
-    values = values(values > 0);
-end
-limits = padded_limits(values, padding, useLogScale);
-end
-
 function [lowerCut, upperCut] = largest_gap_cut(values, useLogScale)
 if useLogScale
     sortedValues = sort(log10(values(values > 0)));
@@ -241,6 +193,10 @@ else
     lowerCut = sortedValues(gapIdx);
     upperCut = sortedValues(gapIdx + 1);
 end
+end
+
+function foldYAxis = should_fold_y_axis(errorMetric)
+foldYAxis = strcmpi(errorMetric, 'orbit_l2');
 end
 
 function physicalParams = to_physical_params(parameters)
@@ -370,4 +326,9 @@ text(bottomAx, -0.055, 1.02, '//', 'Units', 'normalized', ...
     'FontName', 'Arial', 'FontSize', 13, 'FontWeight', 'bold');
 text(topAx, -0.055, -0.10, '//', 'Units', 'normalized', ...
     'FontName', 'Arial', 'FontSize', 13, 'FontWeight', 'bold');
+end
+
+function dirName = scale_dir_name(scale)
+token = strrep(sprintf('%.12g', scale), '.', 'p');
+dirName = ['scale_' token];
 end

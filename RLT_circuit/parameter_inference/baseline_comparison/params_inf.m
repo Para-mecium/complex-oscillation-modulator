@@ -10,6 +10,7 @@ repoDir = fileparts(circuitDir);
 
 addpath(repoDir, '-begin');
 addpath(circuitDir, '-begin');
+addpath(parameterInferenceDir, '-begin');
 addpath(scriptDir, '-begin');
 
 targetDataFile = fullfile(parameterInferenceDir, 'initData_circuit.mat');

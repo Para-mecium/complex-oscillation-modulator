@@ -21,7 +21,7 @@ obs = [];
 params = initData.Parameters;
 t = initData.TS{1};
 TS_var = initData.TS{2};
-M = 75;
+M = 50;
 derivatives = build_symbolic_derivatives(sys, obs, numel(params));
 
 PV.name = 'var';

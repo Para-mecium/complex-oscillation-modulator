@@ -26,7 +26,7 @@ end
 disp('%% Simulation settings');
 representativeSeeds = [0, 0, 0];
 warmupT = 1000;
-measureT = 72;
+measureT = 100;
 
 representativeOptions = struct();
 representativeOptions.warmupT = warmupT;
@@ -57,7 +57,7 @@ for i = 1:numel(markerFiles)
     runOptions.seed = representativeSeeds(i);
 
     sim = Circadian_SDE(loaded.Parameters, y0, runOptions);
-    measureMask = sim.t >= representativeOptions.warmupT;
+    measureMask = sim.t >= representativeOptions.warmupT & sim.t <= representativeOptions.T;
 
     representative(i).targetPeriod = loaded.period(1);
     representative(i).seed = representativeSeeds(i);

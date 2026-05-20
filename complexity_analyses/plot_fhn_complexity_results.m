@@ -7,6 +7,9 @@ data_dir = fullfile(script_dir, 'data');
 
 baseline_dir = ...
     'base_N20_M10';
+
+% dlambda_cap_sweep, err_bound_sweep, sys_dim_sweep, target_num_sweep,
+% truncation_order_sweep
 sweep_dir = 'truncation_order_sweep';
 
 runtime_field = 'fmamTime';
@@ -95,6 +98,10 @@ y = y(order);
 fig = figure;
 plot(x, y, 'o-', 'LineWidth', 1.5);
 grid on
+if strcmp(sweep_name, 'errBound')
+    set(gca, 'XScale', 'log');
+end
+apply_flat_runtime_axis_style(y);
 xlabel(x_field);
 ylabel(y_field);
 title(plot_title);
@@ -122,7 +129,23 @@ end
 fig = figure;
 bar(categorical(labels), y);
 grid on
+apply_flat_runtime_axis_style(y);
 ylabel(y_field);
 title('FMAM runtime by network and coupling');
 saveas(fig, fullfile(figure_dir, sprintf('fhn_network_coupling_%s.png', y_field)));
+end
+
+function apply_flat_runtime_axis_style(y)
+y_min = min(y);
+y_max = max(y);
+if y_max - y_min >= 1
+    return
+end
+lower = floor(y_min);
+upper = ceil(y_max);
+if upper <= lower
+    upper = lower + 1;
+end
+ylim([lower, upper]);
+yticks(lower:1:upper);
 end

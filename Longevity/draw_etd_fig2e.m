@@ -3,33 +3,44 @@ scriptDir = fileparts(mfilename('fullpath'));
 dataFile = fullfile(scriptDir, 'sde_distribution.mat');
 
 data = load(dataFile);
-initColor = [0.2, 0.45, 0.85];
-modulatedColor = [0.92, 0.74, 0.16];
-zoneColor = [0.75, 0.75, 0.75];
+initColor = [0, 114, 178] / 255;
+modulatedColor = [230, 159, 0] / 255;
+zoneColor = [0.25, 0.25, 0.25];
 agingZoneS = 200;
 agingZoneH = 100;
+xLimits = [0, 60];
+xTicks = [0, 20, 40, 60];
+sYLimits = [100, 450];
+sYTicks = [100, 200, 300, 400];
+hYLimits = [0, 700];
+hYTicks = [0, 200, 400, 600];
 
-fig = figure('Color', 'w', 'Position', [120, 120, 650, 360]);
-tiled = tiledlayout(fig, 2, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+fig = gobjects(1, 2);
 
-ax = nexttile(tiled, 1);
+fig(1) = figure('Color', 'w');
+tiledInit = tiledlayout(fig(1), 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+ax = nexttile(tiledInit, 1);
 draw_trace_panel(ax, data.init.trajectory.t, data.init.trajectory.S, ...
-    initColor, zoneColor, agingZoneS, [0, 400], 'SIR2 protein (a.u.)', 'Init');
+    initColor, zoneColor, agingZoneS, xLimits, xTicks, sYLimits, sYTicks, {'SIR2', 'protein (a.u.)'});
 
-ax = nexttile(tiled, 2);
-draw_trace_panel(ax, data.modulated.trajectory.t, data.modulated.trajectory.S, ...
-    modulatedColor, zoneColor, agingZoneS, [0, 400], 'SIR2 protein (a.u.)', 'Modulated');
-
-ax = nexttile(tiled, 3);
+ax = nexttile(tiledInit, 2);
 draw_trace_panel(ax, data.init.trajectory.t, data.init.trajectory.H, ...
-    initColor, zoneColor, agingZoneH, [0, 600], 'HAP4 protein (a.u.)', '');
+    initColor, zoneColor, agingZoneH, xLimits, xTicks, hYLimits, hYTicks, {'HAP4', 'protein (a.u.)'});
 
-ax = nexttile(tiled, 4);
+fig(2) = figure('Color', 'w');
+tiledModulated = tiledlayout(fig(2), 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+ax = nexttile(tiledModulated, 1);
+draw_trace_panel(ax, data.modulated.trajectory.t, data.modulated.trajectory.S, ...
+    modulatedColor, zoneColor, agingZoneS, xLimits, xTicks, sYLimits, sYTicks, {'SIR2', 'protein (a.u.)'});
+
+ax = nexttile(tiledModulated, 2);
 draw_trace_panel(ax, data.modulated.trajectory.t, data.modulated.trajectory.H, ...
-    modulatedColor, zoneColor, agingZoneH, [0, 600], 'HAP4 protein (a.u.)', '');
+    modulatedColor, zoneColor, agingZoneH, xLimits, xTicks, hYLimits, hYTicks, {'HAP4', 'protein (a.u.)'});
 end
 
-function draw_trace_panel(ax, t, values, lineColor, zoneColor, zoneUpper, yLimits, yLabelText, titleText)
+function draw_trace_panel(ax, t, values, lineColor, zoneColor, zoneUpper, xLimits, xTicks, yLimits, yTicks, yLabelText)
 meanValues = mean(values, 2);
 intervalValues = prctile(values, [10 90], 2);
 
@@ -42,10 +53,11 @@ patch([t(:); flipud(t(:))], [intervalValues(:, 1); flipud(intervalValues(:, 2))]
 plot(t, meanValues, 'Color', lineColor, 'LineWidth', 1.5)
 box on
 grid on
-xlim([t(1), t(end)])
+xlim(xLimits)
+xticks(ax, xTicks)
 ylim(yLimits)
+yticks(ax, yTicks)
 xlabel('Time (hour)', 'FontName', 'Arial')
 ylabel(yLabelText, 'FontName', 'Arial')
-title(titleText, 'FontName', 'Arial')
 set(ax, 'FontSize', 10, 'Layer', 'top')
 end

@@ -3,7 +3,7 @@ clc
 
 %% User settings
 settings = struct();
-settings.randomSeed = 0;
+settings.randomSeed = 1;
 % netName options: 'ER', 'BA', 'SW'
 settings.netName = 'SW';
 settings.weightPer = 0.3;
@@ -13,7 +13,7 @@ settings.perturbedNodeSelectionMode = 'prefix';
 % Options: 'prefix', 'uniformRandomWithoutReplacement', 'uniformRandomWithReplacement'
 settings.inputNodeSelectionMode = 'uniformRandomWithoutReplacement';
 settings.solverName = 'ode15s';
-settings.searchWindow = 1000;
+settings.searchWindow = 5000;
 settings.network = struct( ...
     'N', 100, ...
     'degAvg', 5, ...

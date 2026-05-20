@@ -35,6 +35,7 @@ repeatOptions.T = warmupT + psdMeasureT;
 repeatOptions.dt = 0.01;
 repeatOptions.sigma = 0.1;
 repeatOptions.noiseClass = {'o', 'o', 'o'};
+repeatOptions.psdObservable = 'Ptot';
 psdMeasureCount = round(psdMeasureT / repeatOptions.dt) + 1;
 distributionMeasureCount = round(distributionMeasureT / repeatOptions.dt) + 1;
 
@@ -77,8 +78,8 @@ for i = 1:numel(markerFiles)
         X = sim.X(measureMask, :);
 
         psdX = X(1:psdMeasureCount, :);
-        Pn = psdX(:, 3);
-        [frequency, spectrum] = single_sided_periodogram(Pn, repeatOptions.dt);
+        Ptot = psdX(:, 2) + psdX(:, 3);
+        [frequency, spectrum] = single_sided_periodogram(Ptot, repeatOptions.dt);
         frequencyVectors{j} = frequency(:);
         psdValues(j, :) = spectrum(:).';
 
