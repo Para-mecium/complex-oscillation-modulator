@@ -1,5 +1,14 @@
 # complex-oscillation-modulator
 
+## Reproducibility documentation
+
+- `REPRODUCIBILITY.md`: repository-level guide for reproducing the numerical
+  workflows from archived data or regenerated results.
+- `FIGURE_WORKFLOW_MAP.md`: map from figure groups to scripts, input `.mat`
+  files, and expected outputs.
+- `ENVIRONMENT_AND_SEEDS.md`: pinned MATLAB environment, required toolboxes,
+  MatCont note, and random-seed policy.
+
 ## Dependency
 - `FMAM_ODE` itself only needs MATLAB.
 - If you want to generate analytic Jacobians automatically, use `build_symbolic_derivatives.m`, which requires Symbolic Toolbox.
