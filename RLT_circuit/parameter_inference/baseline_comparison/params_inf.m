@@ -15,7 +15,7 @@ addpath(scriptDir, '-begin');
 
 targetDataFile = fullfile(parameterInferenceDir, 'initData_circuit.mat');
 baseDataFile = fullfile(parameterInferenceDir, 'initData_ODE.mat');
-lossName = 'property_difference';
+lossName = 'relative_l2_orbit';
 
 targetData = load(targetDataFile);
 initData = load(baseDataFile);

@@ -1,7 +1,7 @@
 clear
 clc
 %%
-scaleLevels = [1.25];
+scaleLevels = [0.5 0.75 1 1.25 1.5];
 repeatCount = 2;
 indexPV = 1;
 outputDirName = 'outlier_timeseries';

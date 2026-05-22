@@ -7,7 +7,7 @@ circuitDir = fileparts(parameterInferenceDir);
 repoDir = fileparts(circuitDir);
 initDataRootDir = fullfile(scriptDir, 'init_data_files');
 resultsRootDir = fullfile(scriptDir, 'results');
-scaleLevels = [1.25 1.5];
+scaleLevels = [0.5 0.75 1 1.25 1.5];
 saveEvery = 10;
 
 addpath(repoDir, '-begin');

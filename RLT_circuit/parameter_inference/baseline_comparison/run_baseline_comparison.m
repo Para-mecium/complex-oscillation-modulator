@@ -16,7 +16,7 @@ methods = { ...
     struct('name', 'sobol', 'refinement', 'powell'), ...
     struct('name', 'pso', 'refinement', 'none')};
 
-lossName = 'property_difference';
+lossName = 'relative_l2_orbit'; % property_difference, relative_l2_orbit
 penaltyLoss = 1e30;
 saveBestOrbit = true;
 odeSolverTolerance = struct('RelTol', 1e-6, 'AbsTol', 1e-6);
