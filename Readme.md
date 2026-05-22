@@ -1,35 +1,166 @@
 # complex-oscillation-modulator
 
-## Reproducibility documentation
+MATLAB implementation and archived data for FMAM modulation examples, network
+experiments, parameter-inference workflows, and figure generation associated
+with the manuscript *Modulatability of complex oscillators* (under revision).
 
-- `REPRODUCIBILITY.md`: repository-level guide for reproducing the numerical
-  workflows from archived data or regenerated results.
-- `FIGURE_WORKFLOW_MAP.md`: map from figure groups to scripts, input `.mat`
-  files, and expected outputs.
-- `ENVIRONMENT_AND_SEEDS.md`: pinned MATLAB environment, required toolboxes,
-  MatCont note, and random-seed policy.
+The class `FMAM_ODE` computes continuation paths in the parameter space along which properties of a
+periodic solution move toward prescribed targets. Derivative preparation is
+separated from the solver: symbolic differentiation is done once outside the
+class, and the resulting cache is reused across experiments.
 
-## Dependency
-- `FMAM_ODE` itself only needs MATLAB.
-- If you want to generate analytic Jacobians automatically, use `build_symbolic_derivatives.m`, which requires Symbolic Toolbox.
+## Quick start
 
-## Syntax
+A typical modulation workflow proceeds in five stages. For a complete scripted
+example, see `flexible_modulators/modulation_paths.m`.
+
+### 1. Periodic orbit
+
+Start from a stable periodic orbit of the ODE at the initial parameter values.
+Most workflows obtain `(t, TS_var)` either by forward simulation with an event
+detector, or through `PO_extract/extract_periodic_orbit.m`. The orbit must cover at least one full period after any
+transient has been discarded.
+
+### 2. Phase representation
+
+Choose a primary variable `PV` (a state component or observable) and a Fourier
+truncation order `M`. Build a `state` object from the sampled orbit, then
+convert it to the canonical solver struct:
+
 ```matlab
-derivatives = build_symbolic_derivatives(system, observables, numel(params));
-continuationOptions = struct('predictorMode', 'auto', 'initialLambdaStep', 0.1);
 stat = state(observables, params, t, TS_var, M, PV);
+stat.updatePeriod();
+stat.updateVar2();   % and updateObs2() when observables are used
 solverView = fmam_state_ops.solverViewFromState(stat);
-task = FMAM_ODE(system, observables, solverView, items_per, items_controlled, ...
-    [], errBound, 'derivatives', derivatives, ...
-    'continuationOptions', continuationOptions);
 ```
 
-## Description
-This project is built to solve the complex oscillation modulation problem raised in article *Modulatability of complex oscillators*. The class `FMAM_ODE` computes the modulation path along which the properties of the periodic solution move towards the target value.
+`solverView` stores the Fourier representation (`p_Psi`, `q_Psi`, `p_var`,
+`q_var`, …) that `FMAM_ODE` operates on. See `FMAM_ODE_state_logic.md` for the
+internal representation and update rules.
 
-The derivative preparation step is now separated from the solver. `FMAM_ODE` expects a precomputed `derivatives` struct at construction time, so symbolic differentiation can be done once outside the class and reused across experiments.
+### 3. Derivative cache
+
+Prepare analytic Jacobians before constructing the task. With the Symbolic
+Toolbox:
+
+```matlab
+derivatives = build_symbolic_derivatives(system, observables, numel(params));
+```
+
+Alternatively, supply an equivalent struct of function handles with fields
+`var`, `obs`, and `obs2` (see **Input arguments** below).
+
+### 4. Modulation setup and solve
+
+Define one modulation target per struct entry in `items_per`, and pair each
+target with one controlled parameter index in `items_controlled`:
+
+```matlab
+items_per(1).prop = 'varAmp';
+items_per(1).idx = 1;
+items_per(1).target = 10;
+items_per(2).prop = 'p_Psi';
+items_per(2).idx = 1;
+items_per(2).target = targetPeriod / (2 * pi);
+
+items_controlled = [1, 2];   % one parameter index per target
+accuracy = 1e-6;
+continuationOptions = struct('predictorMode', 'auto', 'initialLambdaStep', 0.1);
+
+task = FMAM_ODE(system, observables, solverView, items_per, items_controlled, ...
+    [], accuracy, 'derivatives', derivatives, ...
+    'continuationOptions', continuationOptions);
+
+task.fit();    % Newton solve at the current target values
+task.step();   % adaptive continuation toward the modulation targets
+
+task.errBound = 1e-12;   % optional: tighten Newton tolerance after continuation
+task.fit();
+```
+
+Supported values for `items_per(i).prop` are listed under **Modulation
+targets** below.
+
+### 5. Export and post-processing
+
+Read results from the task object rather than rebuilding from raw coefficients
+when possible:
+
+```matlab
+solverView = task.exportSolverView();
+derivedView = task.exportDerivedView();   % period, amplitudes, extrema, ...
+```
+
+Use `task.continuationStatus` and `task.logs` (when `needLog` is enabled) to
+inspect the continuation trace.
+
+## Reproducing manuscript figures
+
+Each figure group in the repository follows three stages:
+
+1. Data generation, or loading of archived example data.
+2. FMAM modulation, parameter inference, continuation, or repeated simulation.
+3. Plotting from the corresponding `.mat` outputs.
+
+Most figure directories include checked-in `.mat` files so that plotting scripts
+can run without recomputing the most expensive sweeps. Re-running builder
+scripts may overwrite those data files.
+
+| Goal | Where to look |
+|---|---|
+| Map figure groups to scripts, inputs, and outputs | `FIGURE_WORKFLOW_MAP.md` |
+| Pinned MATLAB/toolbox versions and random-seed policy | `ENVIRONMENT_AND_SEEDS.md` |
+| Internal `state` / `FMAM_ODE` logic and notation | `FMAM_ODE_state_logic.md` |
+
+To verify a panel from archived data, run the listed `draw_*` script in the
+corresponding directory. To regenerate numerical results, run the listed
+`build_*` or `run_*` script first.
+
+## Repository layout
+
+| Path | Role |
+|---|---|
+| `FMAM_ODE.m`, `state.m`, `fmam_state_ops.m` | Core modulation solver and periodic-orbit representation |
+| `build_symbolic_derivatives.m` | Optional symbolic derivative cache builder |
+| `solve_generic_newton.m`, `solve_regularized_linear_system.m` | Newton and linear solver support |
+| `PO_extract/` | Periodic-orbit extraction  |
+| `flexible_modulators/`, `Circadian/`, `Longevity/`, `RLT_circuit/`, `network_modulatability/`, `Normal form/`, `complexity_analyses/` | Manuscript figure and supplementary workflows |
+
+Add the repository root (and `PO_extract/` when needed) to the MATLAB path before
+running scripts in any subdirectory.
+
+## Dependency
+
+- `FMAM_ODE` itself only needs MATLAB.
+- At construction time, `FMAM_ODE` requires a precomputed `derivatives` struct.
+  Generate it with `build_symbolic_derivatives.m` (Symbolic Math Toolbox), or
+  supply an equivalent struct of function handles yourself.
+- Specific figure workflows may additionally require Parallel Computing Toolbox,
+  Statistics and Machine Learning Toolbox, or Signal Processing Toolbox; see
+  `ENVIRONMENT_AND_SEEDS.md`.
+- Some periodic-orbit workflows in `PO_extract/` can use [MatCont](https://sourceforge.net/projects/matcont/) as an optional backend. MatCont is not bundled in this repository; place it under `MatCont7p6/` at the repository root when needed.
+
+## Modulation targets
+
+Each entry in `items_per` must contain `prop`, `idx`, and `target`.
+
+Supported `prop` values:
+
+| `prop` | Quantity modulated |
+|---|---|
+| `params` | Model parameter (direct target; index must also appear in `items_controlled`) |
+| `p_Psi`, `q_Psi` | Fourier coefficients of `Psi(phi) = dt/dphi` |
+| `p_var`, `q_var` | Fourier coefficients of a state variable |
+| `varPhiMax`, `varPhiMin` | Phase of a state-variable extremum |
+| `obsPhiMax`, `obsPhiMin` | Phase of an observable extremum |
+| `varAmp`, `obsAmp` | Amplitude of a state variable or observable |
+| `varMax`, `varMin`, `obsMax`, `obsMin` | Extremum value |
+| `varPhase` | Phase difference between two state variables or observables |
+
+`idx` format depends on `prop`: Fourier-coefficient targets use `[i, j]` (variable/observable index and harmonic index); `varPhase` uses `[i, j]` for the two components whose phase difference is targeted; scalar properties such as `varAmp` use the component index alone. See the header comment in `FMAM_ODE.m` and `FMAM_ODE_state_logic.md` for details.
 
 ## Input arguments
+
 **system**: Functions of the ordinary differential equation, specified as a $1\times N$ cell where $N$ is the dimension of the ODE. Each components of 'system' are expected to be function handles.
 
 **observables**: Functions that maps the state variables of ODE to the observables, specified as a $1\times n$ cell where $n$ is the number of observables. Each components of 'observables' are expected to be function handles.
@@ -38,11 +169,13 @@ The derivative preparation step is now separated from the solver. `FMAM_ODE` exp
 
 **items_per**: Struct array of modulation targets. Each entry must contain `prop`, `idx`, and `target`, for example `struct('prop','varAmp','idx',1,'target',10)`.
 
-**items_controlled**: Row vector of parameter indices that are allowed to change during modulation.
+**items_controlled**: Row vector of parameter indices, one per modulation target. Its length must equal `numel(items_per)`, indices must be unique, and each entry must lie in `1:dimParams`.
 
 **maxstepsize**: Scalar or row vector that caps each accepted continuation step in target space. Pass `[]` to remove this cap and let `continuationOptions` control the outer continuation step size directly.
 
-**errBound**: Scalar or row vector used to detect already-satisfied targets and zero-length path components.
+**accuracy**: Scalar or row vector (7th positional argument) used to detect already-satisfied targets and zero-length path components during continuation. Targets whose remaining distance falls below `accuracy` are treated as inactive.
+
+**errBound**: Optional name-value pair (default `1e-8`) controlling Newton convergence tolerance. This is separate from the 7th positional `accuracy` argument; scripts often use a looser `accuracy` during continuation and then set a tighter `task.errBound` before a final `fit()`.
 
 **continuationOptions**: Optional struct controlling the adaptive outer continuation and predictor-corrector policy. Supported fields include:
 - `initialLambdaStep`, `initialSteps`, `minLambdaStep`, `maxLambdaStep`
@@ -51,6 +184,7 @@ The derivative preparation step is now separated from the solver. `FMAM_ODE` exp
 - `predictorMode` (`'auto'|'secant'|'quadratic'|'hermite'|'constant'`)
 - `quadraticCurvatureThreshold`, `quadraticStepRatioBounds`
 - `hermiteMaxExtrapolationRatio`, `predictorStepGrowthLimit`
+- `conditionStopEnabled`, `conditionStopRcond`
 
 **derivatives**: Precomputed analytic derivative cache passed as `'derivatives', derivatives`. It must provide:
 - `derivatives.var(i,j).function`: Jacobians of the ODE right-hand side with respect to state variables and parameters.
@@ -59,4 +193,10 @@ The derivative preparation step is now separated from the solver. `FMAM_ODE` exp
 
 Use `build_symbolic_derivatives` if you want to generate this cache from symbolic expressions before constructing `FMAM_ODE`.
 
-Legacy examples under `Normal form/` still use older solver entrypoints and are not the recommended API examples for the current `FMAM_ODE` constructor.
+## Citation
+
+<!-- TODO: add bibliographic details once the manuscript is accepted -->
+
+If you use this code, please cite:
+
+> *[Modulatability of complex oscillators]* — citation details to be added after publication.
