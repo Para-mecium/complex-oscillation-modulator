@@ -102,7 +102,7 @@ ylabel('{\itR_C} (k\Omega)', 'Fontname', 'Arial')
 XTick_2D = 1:0.05:1.2;
 YTick_2D = 0:300:1500;
 
-XTickLabel_2D = {'1.00', '1,05', '1.10', '1.15', '1.20'};
+XTickLabel_2D = {'1.00', '1.05', '1.10', '1.15', '1.20'};
 YTickLabel_2D = {'0', '300', '600', '900', '1200', '1500'};
 
 set(gca, 'FontSize', 10, 'XTick', XTick_2D, 'YTick', YTick_2D, ...

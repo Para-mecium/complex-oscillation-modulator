@@ -30,11 +30,14 @@ redLogCondition = 8.0;
 colorbarMaxLogCondition = 10.0;
 lineColor = [0.25, 0.25, 0.25];
 lineStyle = '--';
-lineWidth = 1.4;
+lineWidth = 1;
+maxLinePoints = 40;
 
 %% Load bifurcation line
 loadedBifurcation = load(bifurcationFile);
 visibleHopfCurve = loadedBifurcation.visibleHopfCurve;
+[hopfKdPlot, hopfATPlot] = downsample_line( ...
+    visibleHopfCurve.Kd(:), visibleHopfCurve.AT(:), [], maxLinePoints);
 
 %% Load iso-amplitude curves
 curveData = cell(1, numel(curveFiles));
@@ -59,25 +62,27 @@ redStartPosition = (redLogCondition - colorConditionLimits(1)) / diff(colorCondi
 conditionColormap = get_condition_colormap(nColor, conditionColorGamma, [0.04, 0.96], redStartPosition);
 
 %% Draw figure
-fig = figure('Color', 'w', 'Position', [100, 100, 640, 520]);
+fig = figure('Color', 'w');
 ax = axes(fig);
 hold(ax, 'on');
 colormap(ax, conditionColormap);
 
 for i = 1:numel(curveData)
     component = curveData{i};
+    component = downsample_component(component, maxLinePoints);
     surface(ax, ...
         kdScale * [component.Kd.'; component.Kd.'], ...
         [component.AT.'; component.AT.'], ...
         zeros(2, numel(component.Kd)), ...
         [component.logCondition.'; component.logCondition.'], ...
-        'FaceColor', 'none', 'EdgeColor', 'interp', 'LineWidth', 3);
+        'FaceColor', 'none', 'EdgeColor', 'interp', 'LineWidth', 1);
 end
 
-plot(ax, kdScale * visibleHopfCurve.Kd(:), visibleHopfCurve.AT(:), ...
+plot(ax, kdScale * hopfKdPlot, hopfATPlot, ...
     'Color', lineColor, 'LineStyle', lineStyle, 'LineWidth', lineWidth);
 
 grid(ax, 'on');
+box(ax, 'on');
 clim(ax, colorConditionLimits);
 cb = colorbar(ax);
 cb.Label.String = 'log_{10} condition number';
@@ -89,7 +94,7 @@ xlabel(ax, 'K_d (\times 10^{-4})');
 ylabel(ax, 'A_T (a.u.)');
 xlim(ax, xLimits);
 ylim(ax, yLimits);
-title(ax, 'Iso-amplitude curves near bifurcation');
+% title(ax, 'Iso-amplitude curves near bifurcation');
 
 exportgraphics(fig, figureFile, 'Resolution', 300);
 fprintf('Saved figure: %s\n', figureFile);
@@ -120,6 +125,70 @@ end
 
 function values = branch_log_condition(branch)
 values = log10(1 ./ [branch.directConditionEstimate]).';
+end
+
+function component = downsample_component(component, maxPoints)
+[component.Kd, component.AT, component.logCondition] = downsample_line( ...
+    component.Kd, component.AT, component.logCondition, maxPoints);
+end
+
+function [xOut, yOut, cOut] = downsample_line(x, y, c, maxPoints)
+x = x(:);
+y = y(:);
+hasColor = ~isempty(c);
+if hasColor
+    c = c(:);
+    finiteMask = isfinite(x) & isfinite(y) & isfinite(c);
+else
+    finiteMask = isfinite(x) & isfinite(y);
+end
+finiteIdx = find(finiteMask);
+if isempty(finiteIdx)
+    xOut = zeros(0, 1);
+    yOut = zeros(0, 1);
+    cOut = c;
+    return
+end
+if numel(finiteIdx) == 1
+    xOut = repmat(x(finiteIdx), maxPoints, 1);
+    yOut = repmat(y(finiteIdx), maxPoints, 1);
+    if hasColor
+        cOut = repmat(c(finiteIdx), maxPoints, 1);
+    else
+        cOut = [];
+    end
+    return
+end
+if numel(finiteIdx) < maxPoints
+    samplePosition = linspace(1, numel(finiteIdx), maxPoints).';
+    finitePosition = (1:numel(finiteIdx)).';
+    xOut = interp1(finitePosition, x(finiteIdx), samplePosition, 'linear');
+    yOut = interp1(finitePosition, y(finiteIdx), samplePosition, 'linear');
+    if hasColor
+        cOut = interp1(finitePosition, c(finiteIdx), samplePosition, 'linear');
+    else
+        cOut = [];
+    end
+    return
+end
+keepFiniteIdx = finiteIdx(round(linspace(1, numel(finiteIdx), maxPoints)));
+keepMask = false(size(x));
+keepMask(keepFiniteIdx) = true;
+nanIdx = find(~finiteMask);
+for i = 1:numel(nanIdx)
+    hasKeptBefore = any(keepFiniteIdx < nanIdx(i));
+    hasKeptAfter = any(keepFiniteIdx > nanIdx(i));
+    if hasKeptBefore && hasKeptAfter
+        keepMask(nanIdx(i)) = true;
+    end
+end
+xOut = x(keepMask);
+yOut = y(keepMask);
+if hasColor
+    cOut = c(keepMask);
+else
+    cOut = [];
+end
 end
 
 function tag = amplitude_tag(value)

@@ -22,7 +22,8 @@ end
 %% Plot settings
 lineColor = [0.25, 0.25, 0.25];
 lineStyle = '--';
-lineWidth = 1.4;
+lineWidth = 1;
+maxLinePoints = 50;
 
 nColor = 256;
 % gamma < 1 expands low-to-mid condition values and compresses the high-end tail.
@@ -47,6 +48,7 @@ hopfI1Plot = hopfI1;
 hopfETPlot = hopfET;
 hopfI1Plot(find(hopfBreakMask) + 1) = NaN;
 hopfETPlot(find(hopfBreakMask) + 1) = NaN;
+[hopfI1Plot, hopfETPlot] = downsample_line(hopfI1Plot, hopfETPlot, [], maxLinePoints);
 
 lpI1 = visibleLpCurve.I1(:);
 lpET = visibleLpCurve.ET(:);
@@ -59,6 +61,7 @@ lpI1Plot = lpI1;
 lpETPlot = lpET;
 lpI1Plot(find(lpBreakMask) + 1) = NaN;
 lpETPlot(find(lpBreakMask) + 1) = NaN;
+[lpI1Plot, lpETPlot] = downsample_line(lpI1Plot, lpETPlot, [], maxLinePoints);
 
 %% Load iso-amplitude curves
 curveI1 = cell(1, numel(curveFiles));
@@ -80,8 +83,10 @@ for i = 1:numel(curveFiles)
     curveI1{i} = [flipud(leftParams(:, 1)); seedParams(1); rightParams(:, 1)];
     curveET{i} = [flipud(leftParams(:, 2)); seedParams(2); rightParams(:, 2)];
     curveLogCondition{i} = [flipud(log10(leftCondition)); seedLogCondition; log10(rightCondition)];
-
     allCurveLogConditions = [allCurveLogConditions; curveLogCondition{i}]; %#ok<AGROW>
+
+    [curveI1{i}, curveET{i}, curveLogCondition{i}] = downsample_line( ...
+        curveI1{i}, curveET{i}, curveLogCondition{i}, maxLinePoints);
 end
 
 conditionLimits = [min(allCurveLogConditions), max(allCurveLogConditions)];
@@ -99,7 +104,7 @@ colormap(ax, conditionColormap);
 for i = 1:numel(curveFiles)
     surface(ax, [curveI1{i}.'; curveI1{i}.'], [curveET{i}.'; curveET{i}.'], ...
         zeros(2, numel(curveI1{i})), [curveLogCondition{i}.'; curveLogCondition{i}.'], ...
-        'FaceColor', 'none', 'EdgeColor', 'interp', 'LineWidth', 3);
+        'FaceColor', 'none', 'EdgeColor', 'interp', 'LineWidth', 1);
 end
 
 plot(ax, hopfI1Plot, hopfETPlot, ...
@@ -143,4 +148,63 @@ baseMap = flipud(cbrewer2('RdYlBu', numColors, 'linear', 'rgb'));
 basePosition = linspace(0, 1, numColors).';
 warpedPosition = basePosition .^ gamma;
 cmap = interp1(basePosition, baseMap, warpedPosition, 'linear');
+end
+
+function [xOut, yOut, cOut] = downsample_line(x, y, c, maxPoints)
+x = x(:);
+y = y(:);
+hasColor = ~isempty(c);
+if hasColor
+    c = c(:);
+    finiteMask = isfinite(x) & isfinite(y) & isfinite(c);
+else
+    finiteMask = isfinite(x) & isfinite(y);
+end
+finiteIdx = find(finiteMask);
+if isempty(finiteIdx)
+    xOut = zeros(0, 1);
+    yOut = zeros(0, 1);
+    cOut = c;
+    return
+end
+if numel(finiteIdx) == 1
+    xOut = repmat(x(finiteIdx), maxPoints, 1);
+    yOut = repmat(y(finiteIdx), maxPoints, 1);
+    if hasColor
+        cOut = repmat(c(finiteIdx), maxPoints, 1);
+    else
+        cOut = [];
+    end
+    return
+end
+if numel(finiteIdx) < maxPoints
+    samplePosition = linspace(1, numel(finiteIdx), maxPoints).';
+    finitePosition = (1:numel(finiteIdx)).';
+    xOut = interp1(finitePosition, x(finiteIdx), samplePosition, 'linear');
+    yOut = interp1(finitePosition, y(finiteIdx), samplePosition, 'linear');
+    if hasColor
+        cOut = interp1(finitePosition, c(finiteIdx), samplePosition, 'linear');
+    else
+        cOut = [];
+    end
+    return
+end
+keepFiniteIdx = finiteIdx(round(linspace(1, numel(finiteIdx), maxPoints)));
+keepMask = false(size(x));
+keepMask(keepFiniteIdx) = true;
+nanIdx = find(~finiteMask);
+for i = 1:numel(nanIdx)
+    hasKeptBefore = any(keepFiniteIdx < nanIdx(i));
+    hasKeptAfter = any(keepFiniteIdx > nanIdx(i));
+    if hasKeptBefore && hasKeptAfter
+        keepMask(nanIdx(i)) = true;
+    end
+end
+xOut = x(keepMask);
+yOut = y(keepMask);
+if hasColor
+    cOut = c(keepMask);
+else
+    cOut = [];
+end
 end
