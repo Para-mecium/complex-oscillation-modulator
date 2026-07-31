@@ -144,41 +144,53 @@ title(ax1, sprintf('Iso-amplitude curves (A = %.1f highlighted)', markerAmplitud
 xlim(ax1, xLimits);
 ylim(ax1, yLimits);
 
-ax2 = nexttile(tiled, 2);
-hold(ax2, 'on');
-view(ax2, 38, 26);
-grid(ax2, 'on');
+rightTiled = tiledlayout(tiled, 3, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+rightTiled.Layout.Tile = 2;
 
-for i = 1:numel(markerFiles)
+plotDuration = 300;
+xTicks = 0:60:plotDuration;
+allMarkerY = vertcat(markerY{:});
+concentrationLimits = [min(allMarkerY(:, 2)), max(allMarkerY(:, 2))];
+concentrationPadding = 0.05 * diff(concentrationLimits);
+concentrationLimits = concentrationLimits + [-concentrationPadding, concentrationPadding];
+plotOrder = numel(markerFiles):-1:1;
+
+for row = 1:numel(plotOrder)
+    i = plotOrder(row);
     alpha = (markerPeriodValues(i) - periodLimits(1)) / (periodLimits(2) - periodLimits(1));
     alpha = min(max(alpha, 0), 1);
     colorIdx = 1 + round(alpha * (size(coolColormap, 1) - 1));
     color = coolColormap(colorIdx, :);
 
     t = markerT{i}(:);
-    y = markerY{i};
+    y = markerY{i}(:, 2);
     tRel = t - t(1);
     tStep = tRel(end);
     tLong = tRel;
     yLong = y;
-    for k = 1:5
+    repeatCount = ceil((plotDuration + tStep) / tStep);
+    for k = 1:repeatCount
         tLong = [tLong; tRel(2:end) + k * tStep]; %#ok<AGROW>
-        yLong = [yLong; y(2:end, :)]; %#ok<AGROW>
+        yLong = [yLong; y(2:end)]; %#ok<AGROW>
     end
-    idxMax = find(islocalmax(yLong(:, 2)));
-    i0 = idxMax(end - 1);
-    i1 = idxMax(end);
-    tPlot = tLong(i0:i1) - tLong(i0);
-    yPlot = yLong(i0:i1, 2);
+    i0 = find(islocalmax(yLong), 1, 'first');
+    tLong = tLong(i0:end) - tLong(i0);
+    yLong = yLong(i0:end);
+    i1 = find(tLong >= plotDuration, 1, 'first');
+    yEnd = interp1(tLong(i1 - 1:i1), yLong(i1 - 1:i1), plotDuration);
+    tPlot = [tLong(1:i1 - 1); plotDuration];
+    yPlot = [yLong(1:i1 - 1); yEnd];
 
-    plot3(ax2, tPlot, markerPeriodValues(i) * ones(size(tPlot)), yPlot, ...
-        'LineWidth', 3, 'Color', color);
+    ax2 = nexttile(rightTiled, row);
+    plot(ax2, tPlot, yPlot, 'LineWidth', 3, 'Color', color);
+    grid(ax2, 'on');
+    xlim(ax2, [0, plotDuration]);
+    xticks(ax2, xTicks);
+    ylim(ax2, concentrationLimits);
 end
 
 xlabel(ax2, 'Time (min)');
-ylabel(ax2, 'Period (min)');
-zlabel(ax2, 'Y (a.u.)');
-title(ax2, sprintf('A = %.1f time series', markerAmplitude));
+ylabel(rightTiled, 'concentration (a.u.)');
 
 exportgraphics(fig, figureFile, 'Resolution', 300);
 fprintf('Saved figure: %s\n', figureFile);
