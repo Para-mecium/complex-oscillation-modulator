@@ -50,6 +50,10 @@ else
 end
 
 colors = lines(numel(distancesByScale));
+scale15Group = scaleValues == 1.5;
+if any(scale15Group)
+    colors(scale15Group, :) = repmat([0.2000, 0.2000, 0.2000], nnz(scale15Group), 1);
+end
 rng(1, 'twister');
 
 for scaleIdx = 1:numel(distancesByScale)

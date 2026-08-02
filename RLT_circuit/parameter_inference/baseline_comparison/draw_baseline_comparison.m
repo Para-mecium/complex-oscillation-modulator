@@ -42,6 +42,10 @@ end
 
 [groupKeys, groupLabels, groupIndex] = unique_groups(records);
 colors = lines(numel(groupKeys));
+sobolGroup = startsWith(groupKeys, 'sobol|');
+if any(sobolGroup)
+    colors(sobolGroup, :) = repmat([0.2000, 0.2000, 0.2000], nnz(sobolGroup), 1);
+end
 proposedGroup = is_proposed_group(groupKeys, groupLabels);
 axisPadding = 0.08;
 finalLossesByGroup = group_record_values(records, groupIndex, numel(groupKeys), 'finalLoss');
