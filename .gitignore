@@ -6,6 +6,7 @@ slprj/
 *.aux
 *.log
 *.mat
+!flexible_modulators/data/fig3/fig3_bifurcation_line.mat
 *.pdf
 *.eps
 *.gif
@@ -37,5 +38,5 @@ RLT_circuit/parameter_inference/sensitivity_to_init_data/sensitivity_to_init_dat
 审稿意见/editor_comments.md
 审稿意见/reviewer1.md
 审稿意见/reviewer2.md
-modulatability_complex_oscillators_source_data_v1.0/
-modulatability_complex_oscillators_source_data_v1.0.zip
+modulatability_complex_oscillators_source_data/
+modulatability_complex_oscillators_source_data.zip

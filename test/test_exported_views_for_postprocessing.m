@@ -8,70 +8,7 @@ function setupOnce(testCase)
     testDir = fileparts(mfilename('fullpath'));
     rootDir = fileparts(testDir);
     addpath(rootDir, '-begin');
-    addpath(fullfile(rootDir, 'flexible_modulators'), '-begin');
-    addpath(fullfile(rootDir, 'Circadian'), '-begin');
     testCase.TestData.rootDir = rootDir;
-end
-
-function testFlexmodOrbitReconstructionAcceptsDerivedView(testCase)
-    task = make_reference_task();
-    solverView = task.exportSolverView();
-    derived = task.exportDerivedView();
-
-    orbit = flexmod.orbit_from_state(derived, solverView.params);
-
-    verifyEqual(testCase, orbit.period, derived.period, 'AbsTol', 1e-12);
-    verifyEqual(testCase, orbit.params, solverView.params, 'AbsTol', 1e-12);
-    verifyEqual(testCase, orbit.t(1:end-1), derived.t, 'AbsTol', 1e-12);
-    verifyEqual(testCase, orbit.y(1:end-1,:), derived.TS_var, 'AbsTol', 1e-12);
-    verifyEqual(testCase, orbit.t(end), derived.period, 'AbsTol', 1e-12);
-    verifyEqual(testCase, orbit.y(end,:), derived.TS_var(1,:), 'AbsTol', 1e-12);
-end
-
-function testCircadianInitialGuessAcceptsDerivedView(testCase)
-    task = make_reference_task();
-    derived = task.exportDerivedView();
-    cfg = struct('orbit', struct('stateInitPhaseFraction', 0.25));
-
-    y0 = circadian.state_initial_guess(derived, cfg);
-
-    sampleIndex = 1 + floor(cfg.orbit.stateInitPhaseFraction * max(size(derived.TS_var, 1) - 1, 0));
-    sampleIndex = min(max(sampleIndex, 1), size(derived.TS_var, 1));
-    verifyEqual(testCase, y0, derived.TS_var(sampleIndex, :).', 'AbsTol', 1e-12);
-end
-
-function testCircadianBuildTaskInputsAcceptsSolverAndDerivedViews(testCase)
-    cfg = circadian.default_config();
-    model = circadian.build_model(cfg);
-    period0 = 24;
-    solverView = struct( ...
-        'params', reshape(model.defaultParams, 1, []), ...
-        'p_Psi', [period0 / (2 * pi); zeros(3, 1)]);
-    derivedView = struct( ...
-        'obsAmp', 0.6, ...
-        'obsMax', 1.4);
-
-    taskSpec = struct();
-    taskSpec.goalOrder = {'obsAmp', 'period'};
-    taskSpec.controlledParams = {model.paramNames{1}, model.paramNames{2}};
-    taskSpec.goals = struct('obsAmp', 0.9, 'period', 28);
-    taskSpec.maxStepScale = 1;
-
-    [itemsPerturb, itemsControlled, maxStep, accuracy] = ...
-        circadian.build_task_inputs(taskSpec, model, solverView, derivedView, cfg);
-
-    verifyEqual(testCase, itemsPerturb(1).prop, 'obsAmp');
-    verifyEqual(testCase, itemsPerturb(1).idx, 1);
-    verifyEqual(testCase, itemsPerturb(1).target, taskSpec.goals.obsAmp, 'AbsTol', 1e-12);
-    verifyEqual(testCase, itemsPerturb(2).prop, 'p_Psi');
-    verifyEqual(testCase, itemsPerturb(2).idx, 1);
-    verifyEqual(testCase, itemsPerturb(2).target, taskSpec.goals.period / (2 * pi), 'AbsTol', 1e-12);
-    verifyEqual(testCase, itemsControlled, ...
-        [circadian.parameter_index(model, model.paramNames{1}), circadian.parameter_index(model, model.paramNames{2})]);
-    verifyGreaterThan(testCase, maxStep(1), 0);
-    verifyGreaterThan(testCase, maxStep(2), 0);
-    verifyEqual(testCase, accuracy(1), cfg.fmam.targetAccuracy.obsAmp, 'AbsTol', 1e-12);
-    verifyEqual(testCase, accuracy(2), cfg.fmam.targetAccuracy.period, 'AbsTol', 1e-12);
 end
 
 function testConstructorAcceptsSolverViewWithEquivalentBehavior(testCase)

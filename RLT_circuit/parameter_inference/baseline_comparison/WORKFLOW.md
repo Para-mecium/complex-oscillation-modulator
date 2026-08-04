@@ -1,6 +1,6 @@
 # RLT circuit baseline comparison workflow
 
-Black-box optimizers vs the proposed FMAM continuation method for electronic-circuit parameter inference (Fig. 4 baseline panels). Parent: [../WORKFLOW.md](../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../../FIGURE_WORKFLOW_MAP.md).
+Black-box optimizers vs the proposed FMAM continuation method for electronic-circuit parameter inference (Fig. 4 baseline panels). Parent: [../../WORKFLOW.md](../../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../../FIGURE_WORKFLOW_MAP.md).
 
 ## Prerequisites
 

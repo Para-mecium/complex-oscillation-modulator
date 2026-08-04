@@ -1,20 +1,9 @@
-scriptPath = mfilename('fullpath');
-candidateRoots = { ...
-    '/Users/caiyutong/Desktop/CYT/FMAM/审稿意见/NCS/FMAM_code/network_modulatability', ...
-    '/Users/caiyutong/Desktop/CYT/Codes/ErgodicMethod/Networks'};
-if ~isempty(scriptPath)
-    candidateRoots = [{fileparts(fileparts(scriptPath))}, candidateRoots];
-end
-for idxRoot = 1:numel(candidateRoots)
-    rootDir = candidateRoots{idxRoot};
-    if exist(rootDir, 'dir') == 7
-        addpath(rootDir);
-    end
-end
+scriptDir = fileparts(mfilename('fullpath'));
+networkDir = fileparts(scriptDir);
+addpath(networkDir);
 if exist('buildsw', 'file') ~= 2
     error('CoupledFHN:MissingBuildsw', ...
-        'buildsw.m was not found. Checked candidate roots:\n%s', ...
-        strjoin(candidateRoots, '\n'));
+        'buildsw.m was not found under the repository path: %s', networkDir);
 end
 if isempty(which('networkexp.evaluate_periodic_orbit'))
     error('CoupledFHN:MissingNetworkExp', ...

@@ -1,6 +1,6 @@
 # RLT circuit sensitivity to measurement noise workflow
 
-FMAM inference from synthetically noisy circuit time series at three noise levels (Fig. 4 measurement-noise panel). Parent: [../WORKFLOW.md](../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../../FIGURE_WORKFLOW_MAP.md).
+FMAM inference from synthetically noisy circuit time series at three noise levels (Fig. 4 measurement-noise panel). Parent: [../../WORKFLOW.md](../../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../../FIGURE_WORKFLOW_MAP.md).
 
 ## Prerequisites
 

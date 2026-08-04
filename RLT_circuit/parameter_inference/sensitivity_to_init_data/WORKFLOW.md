@@ -1,6 +1,6 @@
 # RLT circuit sensitivity to initial data workflow
 
-FMAM parameter inference repeated over random initial guesses at five sampling-region scales (Fig. 4 sensitivity panels; Extended Data Fig. 4). Parent: [../WORKFLOW.md](../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../../FIGURE_WORKFLOW_MAP.md).
+FMAM parameter inference repeated over random initial guesses at five sampling-region scales (Fig. 4 sensitivity panels; Extended Data Fig. 4). Parent: [../../WORKFLOW.md](../../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../../FIGURE_WORKFLOW_MAP.md).
 
 ## Prerequisites
 

@@ -1,8 +1,8 @@
 # complex-oscillation-modulator
 
-MATLAB implementation and archived data for FMAM modulation examples, network
-experiments, parameter-inference workflows, and figure generation associated
-with the manuscript *Modulatability of complex oscillators* (under revision).
+MATLAB implementation for FMAM modulation examples, network experiments,
+parameter-inference workflows, and figure-data generation associated with the
+manuscript *Modulatability of complex oscillators* (under revision).
 
 The class `FMAM_ODE` computes continuation paths in the parameter space along which properties of a
 periodic solution move toward prescribed targets. Derivative preparation is
@@ -98,13 +98,16 @@ inspect the continuation trace.
 
 Each figure group in the repository follows three stages:
 
-1. Data generation, or loading of archived example data.
+1. Plotting-data generation with the corresponding `build_*`, `run_*`, or
+   inference scripts.
 2. FMAM modulation, parameter inference, continuation, or repeated simulation.
 3. Plotting from the corresponding `.mat` outputs.
 
-Most figure directories include checked-in `.mat` files so that plotting scripts
-can run without recomputing the most expensive sweeps. Re-running builder
-scripts may overwrite those data files.
+Plotting `.mat` files are generated outputs and are not expected to be tracked
+by Git. Before running a `draw_*` script, generate its inputs with the production
+scripts listed in `FIGURE_WORKFLOW_MAP.md` and the relevant `WORKFLOW.md` file.
+Some full workflows contain computationally expensive sweeps; their documented
+software requirements and random-seed policies apply during regeneration.
 
 | Goal | Where to look |
 |---|---|
@@ -112,9 +115,8 @@ scripts may overwrite those data files.
 | Pinned MATLAB/toolbox versions and random-seed policy | `ENVIRONMENT_AND_SEEDS.md` |
 | Internal `state` / `FMAM_ODE` logic and notation | `FMAM_ODE_state_logic.md` |
 
-To verify a panel from archived data, run the listed `draw_*` script in the
-corresponding directory. To regenerate numerical results, run the listed
-`build_*` or `run_*` script first.
+To reproduce a panel, run the listed `build_*`, `run_*`, or inference scripts
+first, then run the corresponding `draw_*` script.
 
 ## Repository layout
 
@@ -192,6 +194,10 @@ Supported `prop` values:
 - `derivatives.obs2(i,j,k).function`: Second derivatives of observables with respect to state variables.
 
 Use `build_symbolic_derivatives` if you want to generate this cache from symbolic expressions before constructing `FMAM_ODE`.
+
+## License
+
+The software in this repository is licensed under the [MIT License](LICENSE).
 
 ## Citation
 

@@ -7,6 +7,9 @@ end
 function testOrbitmatcontBackend(testCase)
 rootDir = fileparts(fileparts(mfilename('fullpath')));
 matcontRoot = fullfile(rootDir, 'MatCont7p6');
+assumeTrue(testCase, ...
+    isfile(fullfile(matcontRoot, 'Continuer', 'cont.m')), ...
+    'MatCont is an optional untracked dependency; skipping backend regression test.');
 addpath(rootDir);
 addpath(fullfile(rootDir, 'PO_extract'));
 addpath(genpath(matcontRoot));
