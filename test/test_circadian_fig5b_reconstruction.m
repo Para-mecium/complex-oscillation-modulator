@@ -98,20 +98,20 @@ cfg.fig5d.Kdseed = [5e-5, 5e-5];
 cfg.fig5d.markPeriods = [23.5, 24];
 cfg.fig5d.markSeeds = [8.5e-5, 0.045; 6.5e-5, 0.035];
 cfg.fig5d.sde.representativeSeeds = [1, 2];
-cfg.figS2a.amplitudes = [0.02, 0.03];
+cfg.figS15a.amplitudes = [0.02, 0.03];
 
 result = reproduce_all_fig5(cfg);
 
 verifyTrue(testCase, isfile(circadian.curve_cache_file(cfg, 'fig5b', 'period', cfg.fig5b.periods(1))));
 verifyTrue(testCase, isfile(circadian.curve_cache_file(cfg, 'fig5d', 'maximum', cfg.fig5d.maxima(1))));
-verifyTrue(testCase, isfile(circadian.curve_cache_file(cfg, 'figS2a', 'amplitude', cfg.figS2a.amplitudes(1))));
+verifyTrue(testCase, isfile(circadian.curve_cache_file(cfg, 'figS15a', 'amplitude', cfg.figS15a.amplitudes(1))));
 verifyTrue(testCase, isfile(circadian.mark_cache_file(cfg, 'fig5b', 'amplitude_01')));
 verifyTrue(testCase, isfile(circadian.mark_cache_file(cfg, 'fig5d', 'period_01')));
 
 verifyTrue(testCase, isgraphics(result.fig5b.figure));
 verifyTrue(testCase, isgraphics(result.fig5c.figure));
 verifyTrue(testCase, isgraphics(result.fig5d.figure));
-verifyTrue(testCase, isgraphics(result.figS2a.figure));
+verifyTrue(testCase, isgraphics(result.figS15a.figure));
 end
 
 function entries = filter_logs(logEntries, goalOrder)
@@ -159,13 +159,13 @@ cfg.fig5d.sde.sigma = 0.4;
 cfg.fig5d.sde.parallelWorkers = 1;
 cfg.fig5d.sde.psdBandPercentiles = [10, 90];
 
-cfg.figS2a.amplitudes = [0.02];
-cfg.figS2a.centerPeriod = 24;
-cfg.figS2a.KdRange = [1e-5, 1.4e-4];
-cfg.figS2a.KdAxis = [1e-5, 1.4e-4];
-cfg.figS2a.ATAxis = [0.01, 0.09];
-cfg.figS2a.maxParamJump = [1, 1];
-cfg.figS2a.maxPeriodJump = 10;
+cfg.figS15a.amplitudes = [0.02];
+cfg.figS15a.centerPeriod = 24;
+cfg.figS15a.KdRange = [1e-5, 1.4e-4];
+cfg.figS15a.KdAxis = [1e-5, 1.4e-4];
+cfg.figS15a.ATAxis = [0.01, 0.09];
+cfg.figS15a.maxParamJump = [1, 1];
+cfg.figS15a.maxPeriodJump = 10;
 
 cfg.fmam.dlambdaCap = 0.25;
 

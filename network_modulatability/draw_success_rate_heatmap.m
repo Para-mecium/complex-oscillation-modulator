@@ -1,10 +1,10 @@
 clear
 clc
 %%
-netName = 'ER';
+netName = 'BA';
 dynamicName = 'FHN';
 N = 100;
-sourceSequenceIndex = 1;
+sourceSequenceIndex = 3;
 weight_per = 0.3;
 
 scriptDir = fileparts(mfilename('fullpath'));

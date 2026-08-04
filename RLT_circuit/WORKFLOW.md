@@ -1,6 +1,6 @@
 # RLT circuit workflow
 
-Electronic repressilator-like circuit (RLT): FMAM parameter inference from hardware data, baseline optimizer comparison, sensitivity analyses, and orthogonal period modulation (Fig. 4; Extended Data Fig. 3; Extended Data Fig. 5). Global map: [FIGURE_WORKFLOW_MAP.md](../FIGURE_WORKFLOW_MAP.md).
+Electronic repressilator-like circuit (RLT): FMAM parameter inference from hardware data, baseline optimizer comparison, sensitivity analyses, and orthogonal period modulation (Fig. 4; Extended Data Figs. 4 and 5). Global map: [FIGURE_WORKFLOW_MAP.md](../FIGURE_WORKFLOW_MAP.md).
 
 ## Model and shared data
 
@@ -82,7 +82,7 @@ flowchart TD
 | Fig. 4 (baseline comparison) | `baseline_comparison/` | `draw_baseline_comparison` (+ sensitivity scale 1) |
 | Fig. 4 (init-data sensitivity) | `sensitivity_to_init_data/` | `draw_sensitivity_to_init_data_violin`, `draw_sensitivity_to_init_data_success_rate` |
 | Fig. 4 (measurement noise) | `sensitivity_to_measurement_noise/` | `draw_sensitivity_to_measurement_noise` |
-| Extended Data Fig. 3 | `Modulation_bi_target/`, `Modulation_tri_target/` | `draw_params`, `draw_TS` |
-| Extended Data Fig. 5 | `sensitivity_to_init_data/` | `draw_sensitivity_to_init_data` |
+| Extended Data Fig. 4 | `sensitivity_to_init_data/` | `draw_sensitivity_to_init_data` |
+| Extended Data Fig. 5 | `Modulation_bi_target/`, `Modulation_tri_target/` | `draw_params`, `draw_TS` |
 
 Seeds and toolbox versions: [ENVIRONMENT_AND_SEEDS.md](../ENVIRONMENT_AND_SEEDS.md).

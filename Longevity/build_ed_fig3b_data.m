@@ -1,13 +1,13 @@
 clear
 clc
-needPath = true;
 
-%% File paths
+needPath = true;
+%% Extended Data Fig. 3b FMAM procedure
 scriptDir = fileparts(mfilename('fullpath'));
 repoDir = fileparts(scriptDir);
 initDataFile = fullfile(scriptDir, 'initData.mat');
-saveFile = fullfile(scriptDir, 'beta_target_data.mat');
-plotDataFile = fullfile(scriptDir, 'beta_modulation_path.mat');
+saveFile = fullfile(scriptDir, 'alpha_target_data.mat');
+plotDataFile = fullfile(scriptDir, 'alpha_modulation_path.mat');
 
 %% Load initialization data
 obs = [];
@@ -23,8 +23,8 @@ t = initData.TS{1};
 TS_var = initData.TS{2};
 
 %% Build FMAM inputs
-targetMinSH = [300 300];
-controlledIdx = [5 6];
+targetMinSH = [300 250];
+controlledIdx = [1 2];
 continuationOptions = struct('initialLambdaStep', 0.01, 'predictorMode', 'auto');
 
 sys = build_longevity_system();
@@ -69,8 +69,8 @@ if needPath
 
     solution_path = Modtask.logs;
     if isempty(solution_path)
-        error('build_figS1a_cache_fmam:NoContinuationLogs', ...
-            ['No continuation logs for figS1a_params_modulation_path. Increase lambdaStepCap ' ...
+        error('build_ed_fig3b_cache_fmam:NoContinuationLogs', ...
+            ['No continuation logs for ed_fig3b_params_modulation_path. Increase lambdaStepCap ' ...
              'or verify the continuation target differs from the initial state.']);
     end
 
@@ -105,7 +105,7 @@ odeFunc = @(t, y, parameter) ode_rhs_from_sys(sys, y, parameter);
 
 poResult = extract_periodic_orbit(odeFunc, y0, Parameters, opts);
 if ~poResult.has_orbit
-    error('build_figS1a_cache_fmam:PeriodicOrbitGenerationFailed', ...
+    error('build_ed_fig3b_cache_fmam:PeriodicOrbitGenerationFailed', ...
         'Periodic-orbit extraction did not return an orbit (%s).', ...
         poResult.message);
 end

@@ -1,6 +1,6 @@
 # RLT circuit bi-target modulation workflow
 
-FMAM period modulation with one amplitude held fixed (two modulation targets); ODE vs hardware time-series panels (Extended Data Fig. 3, bi-target panels). Parent: [../WORKFLOW.md](../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../FIGURE_WORKFLOW_MAP.md).
+FMAM period modulation with one amplitude held fixed (two modulation targets); ODE vs hardware time-series panels (Extended Data Fig. 5, bi-target panels). Parent: [../WORKFLOW.md](../WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../FIGURE_WORKFLOW_MAP.md).
 
 ## Prerequisites
 
@@ -31,8 +31,8 @@ draw_TS   % edit index_PV, period_multiplier, unit at top of script
 | Script | Purpose | Output / figure |
 |---|---|---|
 | `Orthogonoal_period_modulation.m` | FMAM period×{1,1.5,2} with `varAmp(1)` fixed; controls `R_C`, `inv_C_3` | `period_target_*p*x.mat`; optional `params_modulation_path.mat` |
-| `draw_params.m` | 3D \((C_1,C_2,R_C)\) and 2D \((C_3,R_C)\) continuation curves + target markers | interactive figures → Extended Data Fig. 3 (parameter panels) |
-| `draw_TS.m` | ODE line vs circuit scatter for one state / period multiplier | interactive figure → Extended Data Fig. 3 (time series) |
+| `draw_params.m` | 3D \((C_1,C_2,R_C)\) and 2D \((C_3,R_C)\) continuation curves + target markers | interactive figures → Extended Data Fig. 5a |
+| `draw_TS.m` | ODE line vs circuit scatter for one state / period multiplier | interactive figure → Extended Data Fig. 5c(i)–c(ii) |
 
 Controlled parameters: indices `[1, 4]` (`R_C`, `inv_C_3`). Primary variable: state index 1.
 
@@ -40,7 +40,7 @@ Controlled parameters: indices `[1, 4]` (`R_C`, `inv_C_3`). Primary variable: st
 
 | Figure | Scripts |
 |---|---|
-| Extended Data Fig. 3 (bi-target parameter curves) | `draw_params` |
-| Extended Data Fig. 3 (bi-target time series) | `draw_TS` |
+| Extended Data Fig. 5a (bi-target parameter curves) | `draw_params` |
+| Extended Data Fig. 5c(i)–c(ii) (baseline and bi-target time series) | `draw_TS` |
 
 `draw_TS` reads measured traces from `circuit_data/` (`1x_10.txt`, `1.5x_10.txt`, `2x_10.txt`). Edit `multiplier`, `needPath`, and `M` in `Orthogonoal_period_modulation.m` to change FMAM settings.

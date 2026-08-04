@@ -3,9 +3,9 @@ clc
 
 %% Paths
 scriptDir = fileparts(mfilename('fullpath'));
-figureFile = fullfile(scriptDir, 'figS2a.png');
-curveDataDir = fullfile(scriptDir, 'data', 'figS2a', 'curves');
-markerDataDir = fullfile(scriptDir, 'data', 'figS2a', 'markers');
+figureFile = fullfile(scriptDir, 'figS15a.png');
+curveDataDir = fullfile(scriptDir, 'data', 'figS15a', 'curves');
+markerDataDir = fullfile(scriptDir, 'data', 'figS15a', 'markers');
 
 %% Files
 targetAmplitudes = [0.005, 0.015, 0.025, 0.035, 0.0385];
@@ -15,13 +15,13 @@ markerPeriods = [23.5, 24.0, 24.5];
 curveFiles = cell(1, numel(targetAmplitudes));
 for i = 1:numel(targetAmplitudes)
     curveFiles{i} = fullfile(curveDataDir, ...
-        sprintf('figS2a_iso_amplitude_curve_A%s.mat', amplitude_tag(targetAmplitudes(i))));
+        sprintf('figS15a_iso_amplitude_curve_A%s.mat', amplitude_tag(targetAmplitudes(i))));
 end
 
 markerFiles = cell(1, numel(markerPeriods));
 for i = 1:numel(markerPeriods)
     markerFiles{i} = fullfile(markerDataDir, ...
-        sprintf('figS2a_marker_A%s_T%s.mat', amplitude_tag(markerAmplitude), period_tag(markerPeriods(i))));
+        sprintf('figS15a_marker_A%s_T%s.mat', amplitude_tag(markerAmplitude), period_tag(markerPeriods(i))));
 end
 
 %% Plot settings
@@ -92,7 +92,7 @@ xlabel(ax1, 'K_d (\times 10^{-4})');
 ylabel(ax1, 'A_T (a.u.)');
 xlim(ax1, xLimits);
 ylim(ax1, yLimits);
-title(ax1, 'Fig. S2a1: Iso-amplitude curves');
+title(ax1, 'Fig. S15a1: Iso-amplitude curves');
 
 ax2 = nexttile(tl, 2);
 hold(ax2, 'on');
@@ -106,7 +106,7 @@ end
 grid(ax2, 'on');
 xlabel(ax2, 'Time (hour)');
 ylabel(ax2, 'P_{tot} (a.u.)');
-title(ax2, sprintf('Fig. S2a2: Time series (A = %.3f)', markerAmplitude));
+title(ax2, sprintf('Fig. S15a2: Time series (A = %.3f)', markerAmplitude));
 legend(ax2, 'Location', 'best');
 
 exportgraphics(fig, figureFile, 'Resolution', 300);

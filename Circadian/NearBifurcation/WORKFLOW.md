@@ -1,6 +1,6 @@
 # NearBifurcation workflow (Circadian)
 
-Condition-number diagnostics near Hopf bifurcation on the circadian model (Fig. S17). Parent: [../WORKFLOW.md](../WORKFLOW.md). Flexible-modulator variant: [../../flexible_modulators/NearBifurcation/WORKFLOW.md](../../flexible_modulators/NearBifurcation/WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../FIGURE_WORKFLOW_MAP.md).
+Condition-number diagnostics near Hopf bifurcation on the circadian model (Supplementary Fig. S19). Parent: [../WORKFLOW.md](../WORKFLOW.md). Flexible-modulator variant: [../../flexible_modulators/NearBifurcation/WORKFLOW.md](../../flexible_modulators/NearBifurcation/WORKFLOW.md). Global map: [FIGURE_WORKFLOW_MAP.md](../../FIGURE_WORKFLOW_MAP.md).
 
 ## Prerequisites
 
@@ -44,6 +44,6 @@ draw_iso_maximum_condition
 
 | Figure | Scripts |
 |---|---|
-| Fig. S17 (iso-period) | `draw_iso_period_condition` |
-| Fig. S17 (iso-amplitude) | `draw_iso_amplitude_condition` |
-| Fig. S17 (iso-maximum) | `draw_iso_maximum_condition` |
+| Supplementary Fig. S19b (iso-period) | `draw_iso_period_condition` |
+| Supplementary Fig. S19a (iso-amplitude) | `draw_iso_amplitude_condition` |
+| Supplementary Fig. S19c (iso-maximum) | `draw_iso_maximum_condition` |

@@ -98,7 +98,7 @@ for i = 1:numel(phaseTargets)
         'Parameters', 'TS', 'period', 'phase12', 'targetPhase');
 end
 
-save(fullfile(scriptDir, 'figS15_repressilator_data.mat'), ...
+save(fullfile(scriptDir, 'figS17_repressilator_data.mat'), ...
     'Parameters0', 'periodTarget', 'phaseTargets', 'periodData', 'phaseResults');
 
 function phase12 = phase_difference(t, p1, p2)

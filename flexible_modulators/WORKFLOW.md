@@ -51,4 +51,4 @@ No `draw_fig3b.m` in this directory.
 | Fig. 3c | `draw_fig3c` |
 | Fig. 3d | `draw_fig3d` |
 | Fig. 3f | `draw_fig3f` |
-| Fig. S16 (flexible modulator) | [NearBifurcation/WORKFLOW.md](NearBifurcation/WORKFLOW.md) |
+| Supplementary Fig. S18 (flexible-modulator condition numbers) | [NearBifurcation/WORKFLOW.md](NearBifurcation/WORKFLOW.md) |

@@ -54,8 +54,8 @@ or stochastic trajectory.
 
 | Workflow | Seed handling |
 |---|---|
-| Longevity SDE representative panel | `Longevity/build_etd_fig2c_data.m` uses `seed = 1`; the saved output stores `seed` and `Options`. |
-| Longevity SDE ensemble panel | `Longevity/build_etd_fig2d_data.m` uses `distributionSeeds = 1001:1100`; the saved output stores `distributionSeeds` and `distributionOptions`. |
+| Longevity SDE representative panel | `Longevity/build_ed_fig3c_data.m` uses `seed = 1`; the saved output stores `seed` and `Options`. |
+| Longevity SDE ensemble panel | `Longevity/build_ed_fig3d_data.m` uses `distributionSeeds = 1001:1100`; the saved output stores `distributionSeeds` and `distributionOptions`. |
 | Longevity SDE simulator | `Longevity/SDE_simulation/Longevity_SDE.m` defaults to `opts.seed = 1` and calls `rng(double(opts.seed), 'twister')`. |
 | Circadian SDE representative panel | `Circadian/build_fig5d_sde_representative_data.m` uses `representativeSeeds = [0, 0, 0]`; the saved output stores `representativeSeeds`. |
 | Circadian repeated SDE statistics | `Circadian/build_fig5d_sde_repeat_data.m` uses `repeatSeeds = 1:100`; the saved output stores `repeatSeeds`. |

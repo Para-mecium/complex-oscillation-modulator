@@ -9,7 +9,7 @@ if exist(figure_dir, 'dir') ~= 7
 end
 
 
-%% Fig. S11: system dimension
+%% Extended Data Fig. 2a: system dimension
 files = dir(fullfile(data_dir, 'sys_dim_sweep', '*.mat'));
 x = zeros(1, numel(files));
 runtime = zeros(1, numel(files));
@@ -49,9 +49,9 @@ ylim([0.04, 7])
 xticks([0, 50, 100, 150, 200])
 xlabel('2{\itN}', 'FontName', 'Arial')
 ylabel('Avg. runtime/iter. (s)', 'FontName', 'Arial')
-exportgraphics(fig, fullfile(figure_dir, 'fig_S11_system_dimension.png'), 'Resolution', 300)
+exportgraphics(fig, fullfile(figure_dir, 'ed_fig2a_system_dimension.png'), 'Resolution', 300)
 
-%% Fig. S12: Fourier truncation order
+%% Extended Data Fig. 2b: Fourier truncation order
 files = dir(fullfile(data_dir, 'truncation_order_sweep', '*.mat'));
 x = zeros(1, numel(files));
 runtime = zeros(1, numel(files));
@@ -91,9 +91,9 @@ ylim([0.1, 2])
 xticks([10, 20, 30, 40, 50])
 xlabel('{\itM}', 'FontName', 'Arial')
 ylabel('Avg. runtime/iter. (s)', 'FontName', 'Arial')
-exportgraphics(fig, fullfile(figure_dir, 'fig_S12_truncation_order.png'), 'Resolution', 300)
+exportgraphics(fig, fullfile(figure_dir, 'ed_fig2b_truncation_order.png'), 'Resolution', 300)
 
-%% Fig. S13: number of targets
+%% Extended Data Fig. 2c: number of targets
 files = dir(fullfile(data_dir, 'target_num_sweep', '*.mat'));
 x = zeros(1, numel(files));
 runtime = zeros(1, numel(files));
@@ -131,9 +131,9 @@ ylim([0.2, 0.4])
 xticks([0, 5, 10, 15, 20])
 xlabel('{\itm}', 'FontName', 'Arial')
 ylabel('Avg. runtime/iter. (s)', 'FontName', 'Arial')
-exportgraphics(fig, fullfile(figure_dir, 'fig_S13_target_number.png'), 'Resolution', 300)
+exportgraphics(fig, fullfile(figure_dir, 'ed_fig2c_target_number.png'), 'Resolution', 300)
 
-%% Fig. S14: Newton tolerance
+%% Extended Data Fig. 2d: Newton tolerance
 files = dir(fullfile(data_dir, 'err_bound_sweep', '*.mat'));
 x = zeros(1, numel(files));
 runtime = zeros(1, numel(files));
@@ -171,9 +171,9 @@ xlim([1e-10, 1e-4])
 ylim([0.2, 0.4])
 xlabel('\epsilon', 'FontName', 'Arial')
 ylabel('Avg. runtime/iter. (s)', 'FontName', 'Arial')
-exportgraphics(fig, fullfile(figure_dir, 'fig_S14_newton_tolerance.png'), 'Resolution', 300)
+exportgraphics(fig, fullfile(figure_dir, 'ed_fig2d_newton_tolerance.png'), 'Resolution', 300)
 
-%% Fig. S15: continuation step cap
+%% Extended Data Fig. 2e: continuation step cap
 files = dir(fullfile(data_dir, 'dlambda_cap_sweep', '*.mat'));
 x = zeros(1, numel(files));
 runtime = zeros(1, numel(files));
@@ -212,4 +212,4 @@ ylim([0.2, 0.4])
 xticks([0, 50, 100, 150, 200])
 xlabel('{\itK}', 'FontName', 'Arial')
 ylabel('Avg. runtime/iter. (s)', 'FontName', 'Arial')
-exportgraphics(fig, fullfile(figure_dir, 'fig_S15_step_cap.png'), 'Resolution', 300)
+exportgraphics(fig, fullfile(figure_dir, 'ed_fig2e_step_cap.png'), 'Resolution', 300)

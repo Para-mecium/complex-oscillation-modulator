@@ -1,9 +1,9 @@
-function fig = draw_etd_fig2c()
+function fig = draw_ed_fig3c()
 scriptDir = fileparts(mfilename('fullpath'));
 dataFile = fullfile(scriptDir, 'sde_representative.mat');
 
 if ~isfile(dataFile)
-    generate_extended_fig2c_data
+    build_ed_fig3c_data
 end
 
 data = load(dataFile);

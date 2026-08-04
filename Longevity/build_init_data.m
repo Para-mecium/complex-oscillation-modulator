@@ -1,6 +1,6 @@
 clear
 clc
-%% Extended Fig 2b initial periodic orbit
+%% Extended Data Fig. 3b initial periodic orbit
 scriptDir = fileparts(mfilename('fullpath'));
 repoDir = fileparts(scriptDir);
 saveFile = fullfile(scriptDir, 'initData.mat');
@@ -21,7 +21,7 @@ sys = build_longevity_system();
 odeFunc = @(t, y, parameter) ode_rhs_from_sys(sys, y, parameter);
 poResult = extract_periodic_orbit(odeFunc, y0, Parameters, orbitOptions);
 if ~poResult.has_orbit
-    error('build_extended_fig2b_init_data:PeriodicOrbitGenerationFailed', ...
+    error('build_ed_fig3b_init_data:PeriodicOrbitGenerationFailed', ...
         'Periodic-orbit extraction did not return an orbit (%s).', ...
         poResult.message);
 end

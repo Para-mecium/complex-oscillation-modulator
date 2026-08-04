@@ -2,7 +2,7 @@ clear
 clc
 
 scriptDir = fileparts(mfilename('fullpath'));
-data = load(fullfile(scriptDir, 'figS15_repressilator_data.mat'));
+data = load(fullfile(scriptDir, 'figS17_repressilator_data.mat'));
 
 fig = figure('Color', 'w', 'Units', 'centimeters', 'Position', [4, 4, 13, 4.6]);
 tiledlayout(1, 2, 'Padding', 'compact', 'TileSpacing', 'compact');
@@ -35,5 +35,5 @@ for i = 1:numel(data.phaseResults)
         'FontWeight', 'bold', 'FontSize', 11)
 end
 
-exportgraphics(fig, fullfile(scriptDir, 'Fig_S15.png'), 'Resolution', 300)
-exportgraphics(fig, fullfile(scriptDir, 'Fig_S15.pdf'), 'ContentType', 'vector')
+exportgraphics(fig, fullfile(scriptDir, 'Fig_S17.png'), 'Resolution', 300)
+exportgraphics(fig, fullfile(scriptDir, 'Fig_S17.pdf'), 'ContentType', 'vector')

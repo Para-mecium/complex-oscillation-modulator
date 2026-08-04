@@ -3,7 +3,7 @@ clc
 
 % Three Fig. 3c markers: (80, 2.0), (80, 2.5), (80, 3.0)
 targetPeriod = 80; 
-targetAmplitude = 3.0;
+targetAmplitude = 2.0;
 
 %% Paths
 scriptDir = fileparts(mfilename('fullpath'));

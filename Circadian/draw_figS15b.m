@@ -5,7 +5,7 @@ clc
 scriptDir = fileparts(mfilename('fullpath'));
 curveDataDir = fullfile(scriptDir, 'data', 'fig5d', 'curves');
 markerDataDir = fullfile(scriptDir, 'data', 'fig5d', 'markers');
-figureFile = fullfile(scriptDir, 'figS2b.png');
+figureFile = fullfile(scriptDir, 'figS15b.png');
 
 %% Files
 targetMaxima = [0.20, 0.16, 0.12, 0.08, 0.04];
@@ -92,7 +92,7 @@ xlabel(ax1, 'K_d (\times 10^{-4})');
 ylabel(ax1, 'A_T (a.u.)');
 xlim(ax1, xLimits);
 ylim(ax1, yLimits);
-title(ax1, 'Fig. S2b1: Iso-maximum curves');
+title(ax1, 'Fig. S15b1: Iso-maximum curves');
 
 ax2 = nexttile(tl, 2);
 hold(ax2, 'on');
@@ -106,7 +106,7 @@ end
 grid(ax2, 'on');
 xlabel(ax2, 'Time (hour)');
 ylabel(ax2, 'P_{tot} (a.u.)');
-title(ax2, sprintf('Fig. S2b2: Time series (max = %.3f)', markerMaximum));
+title(ax2, sprintf('Fig. S15b2: Time series (max = %.3f)', markerMaximum));
 legend(ax2, 'Location', 'best');
 
 exportgraphics(fig, figureFile, 'Resolution', 300);

@@ -1,4 +1,4 @@
-function fig = draw_etd_fig2e()
+function fig = draw_ed_fig3e()
 scriptDir = fileparts(mfilename('fullpath'));
 dataFile = fullfile(scriptDir, 'sde_distribution.mat');
 

@@ -1,9 +1,9 @@
-function fig = draw_figS1a()
+function fig = draw_ed_fig3b()
 %% File paths
 scriptDir = fileparts(mfilename('fullpath'));
-pathFile = fullfile(scriptDir, 'beta_modulation_path.mat');
+pathFile = fullfile(scriptDir, 'alpha_modulation_path.mat');
 initFile = fullfile(scriptDir, 'initData.mat');
-learnedFile = fullfile(scriptDir, 'beta_target_data.mat');
+learnedFile = fullfile(scriptDir, 'alpha_target_data.mat');
 
 %% Load data
 pathData = load(pathFile);
@@ -17,24 +17,24 @@ pathColor = [0.2, 0.2, 0.2];
 zoneColor = [0.75, 0.75, 0.75];
 
 figurePosition = [120, 120, 620, 235];
-paramBounds = [0, 4, 0, 25];
-propertyBounds = [50, 350, 50, 350];
-phaseBounds = [150, 350, 50, 350];
+paramBounds = [0, 35, 0, 1800];
+propertyBounds = [50, 350, 50, 400];
+phaseBounds = [50, 400, 50, 400];
 
-paramTicksX = 0:1:4;
-paramTicksY = 0:5:25;
+paramTicksX = 0:5:35;
+paramTicksY = 0:200:1800;
 propertyTicksX = 50:50:350;
-propertyTicksY = 50:50:350;
-phaseTicksX = 150:50:350;
-phaseTicksY = 50:50:350;
+propertyTicksY = 50:50:400;
+phaseTicksX = 50:50:400;
+phaseTicksY = 50:50:400;
 
 agingZoneS = 200;
 agingZoneH = 100;
-controlledIdx = [5 6];
+controlledIdx = [1 2];
 lineWidth = 1.6;
 
-xLabelParam = '$\beta_S$';
-yLabelParam = '$\beta_H$';
+xLabelParam = '$\alpha_S$';
+yLabelParam = '$\alpha_H$';
 xLabelProperty = 'min S';
 yLabelProperty = 'min H';
 xLabelPhase = 'S';

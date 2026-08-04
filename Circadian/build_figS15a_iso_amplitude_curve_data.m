@@ -5,14 +5,14 @@ clc
 scriptDir = fileparts(mfilename('fullpath'));
 repoDir = fileparts(scriptDir);
 initDataFile = fullfile(scriptDir, 'data', 'common', 'initData.mat');
-curveDataDir = fullfile(scriptDir, 'data', 'figS2a', 'curves');
+curveDataDir = fullfile(scriptDir, 'data', 'figS15a', 'curves');
 
 addpath(repoDir);
 addpath(scriptDir);
 addpath(fullfile(repoDir, 'PO_extract'));
 mkdir(curveDataDir);
 
-%% Fig. S2a iso-amplitude settings
+%% Supplementary Fig. S15a iso-amplitude settings
 targetAmplitudes = [0.005, 0.015, 0.025, 0.035, 0.0385];
 centerPeriod = 24.0;
 
@@ -62,7 +62,7 @@ for i = 1:numel(targetAmplitudes)
 
     %% Save one curve file
     outputFile = fullfile(curveDataDir, ...
-        sprintf('figS2a_iso_amplitude_curve_A%s.mat', amplitude_tag(targetAmplitude)));
+        sprintf('figS15a_iso_amplitude_curve_A%s.mat', amplitude_tag(targetAmplitude)));
     save(outputFile, ...
         'targetAmplitude', ...
         'seed', ...
@@ -134,7 +134,7 @@ function seedData = export_seed_data(task, y0)
 finalParams = reshape(task.exportSolverView().params, 1, []);
 orbitResult = circadian_forward_orbit(finalParams, y0, struct());
 if ~orbitResult.success
-    error('circadian_refactor:FigS2aSeedOrbitGenerationFailed', ...
+    error('circadian_refactor:FigS15aSeedOrbitGenerationFailed', ...
         'Periodic-orbit extraction failed at the seed point.');
 end
 

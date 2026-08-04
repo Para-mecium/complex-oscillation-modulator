@@ -5,14 +5,14 @@ clc
 scriptDir = fileparts(mfilename('fullpath'));
 repoDir = fileparts(scriptDir);
 initDataFile = fullfile(scriptDir, 'data', 'common', 'initData.mat');
-markerDataDir = fullfile(scriptDir, 'data', 'figS2a', 'markers');
+markerDataDir = fullfile(scriptDir, 'data', 'figS15a', 'markers');
 
 addpath(repoDir);
 addpath(scriptDir);
 addpath(fullfile(repoDir, 'PO_extract'));
 mkdir(markerDataDir);
 
-%% Fig. S2a marker settings
+%% Supplementary Fig. S15a marker settings
 targetAmplitude = 0.025;
 targetPeriods = [23.5, 24.0, 24.5];
 markSeeds = [1.23601799538e-4, 0.0640753316922; ...
@@ -46,11 +46,11 @@ for i = 1:numel(targetPeriods)
     targetPeriod = targetPeriods(i);
     startParams = markSeeds(i, :);
     saveFile = fullfile(markerDataDir, ...
-        sprintf('figS2a_marker_A%s_T%s.mat', amplitude_tag(targetAmplitude), period_tag(targetPeriod)));
+        sprintf('figS15a_marker_A%s_T%s.mat', amplitude_tag(targetAmplitude), period_tag(targetPeriod)));
 
     startOrbit = circadian_forward_orbit(startParams, baseY0, struct());
     if ~startOrbit.success
-        error('circadian_refactor:FigS2aMarkerSeedOrbitGenerationFailed', ...
+        error('circadian_refactor:FigS15aMarkerSeedOrbitGenerationFailed', ...
             'Periodic-orbit extraction failed at marker seed %d.', i);
     end
 
@@ -84,7 +84,7 @@ for i = 1:numel(targetPeriods)
 
     markerOrbit = circadian_forward_orbit(Parameters, markerDerivedView.TS_var(1, :).', struct());
     if ~markerOrbit.success
-        error('circadian_refactor:FigS2aMarkerOrbitGenerationFailed', ...
+        error('circadian_refactor:FigS15aMarkerOrbitGenerationFailed', ...
             'Periodic-orbit extraction failed at marker point %d.', i);
     end
 
