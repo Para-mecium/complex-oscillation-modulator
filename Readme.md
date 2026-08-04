@@ -35,8 +35,7 @@ solverView = fmam_state_ops.solverViewFromState(stat);
 ```
 
 `solverView` stores the Fourier representation (`p_Psi`, `q_Psi`, `p_var`,
-`q_var`, …) that `FMAM_ODE` operates on. See `FMAM_ODE_state_logic.md` for the
-internal representation and update rules.
+`q_var`, …) that `FMAM_ODE` operates on.
 
 ### 3. Derivative cache
 
@@ -113,7 +112,6 @@ software requirements and random-seed policies apply during regeneration.
 |---|---|
 | Map figure groups to scripts, inputs, and outputs | `FIGURE_WORKFLOW_MAP.md` |
 | Pinned MATLAB/toolbox versions and random-seed policy | `ENVIRONMENT_AND_SEEDS.md` |
-| Internal `state` / `FMAM_ODE` logic and notation | `FMAM_ODE_state_logic.md` |
 
 To reproduce a panel, run the listed `build_*`, `run_*`, or inference scripts
 first, then run the corresponding `draw_*` script.
@@ -159,7 +157,7 @@ Supported `prop` values:
 | `varMax`, `varMin`, `obsMax`, `obsMin` | Extremum value |
 | `varPhase` | Phase difference between two state variables or observables |
 
-`idx` format depends on `prop`: Fourier-coefficient targets use `[i, j]` (variable/observable index and harmonic index); `varPhase` uses `[i, j]` for the two components whose phase difference is targeted; scalar properties such as `varAmp` use the component index alone. See the header comment in `FMAM_ODE.m` and `FMAM_ODE_state_logic.md` for details.
+`idx` format depends on `prop`: Fourier-coefficient targets use `[i, j]` (variable/observable index and harmonic index); `varPhase` uses `[i, j]` for the two components whose phase difference is targeted; scalar properties such as `varAmp` use the component index alone. See the header comment in `FMAM_ODE.m` for details.
 
 ## Input arguments
 
